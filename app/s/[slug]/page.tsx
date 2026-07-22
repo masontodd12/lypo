@@ -1,0 +1,208 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
+
+async function getProject(slug: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("projects")
+    .select("html, name, project_id:id")
+    .eq("slug", slug)
+    .eq("status", "published")
+    .is("deleted_at", null)
+    .single();
+  return data;
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const project = await getProject(slug);
+  return {
+    title: project?.name ?? "Lypo site",
+    manifest: project ? `/api/manifest/${project.project_id}` : undefined,
+    themeColor: "#e8542f",
+  };
+}
+
+export default async function PublicSite({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const project = await getProject(slug);
+  if (!project?.html) notFound();
+
+  const site = process.env.NEXT_PUBLIC_SITE_URL || "";
+
+  const injected = `
+<script>
+(function () {
+  var LYPO_PROJECT_ID = ${JSON.stringify(project.project_id)};
+  var LYPO_SUBMIT = ${JSON.stringify(site + "/api/submit")};
+  var LYPO_STORE = ${JSON.stringify(site + "/api/store")};
+
+  // ---------- lypo.storage: persistence for web apps ----------
+  window.lypo = {
+    save: function (key, value) {
+      return fetch(LYPO_STORE, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: LYPO_PROJECT_ID, action: "set", key: key, value: value })
+      }).then(function (r) { return r.json(); });
+    },
+    load: function (key) {
+      return fetch(LYPO_STORE, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId: LYPO_PROJECT_ID, action: "get", key: key })
+      }).then(function (r) { return r.json(); }).then(function (d) { return d.value; });
+    }
+  };
+
+  // ---------- form capture ----------
+  var typed = {};
+  function keyFor(el) {
+    return el.name || el.id || el.getAttribute("placeholder") || "";
+  }
+  document.addEventListener("input", function (e) {
+    var el = e.target;
+    if (!el || !el.tagName) return;
+    var tag = el.tagName.toLowerCase();
+    if (tag !== "input" && tag !== "select" && tag !== "textarea") return;
+    var key = keyFor(el);
+    if (!key) return;
+    if (el.type === "checkbox") {
+      var group = document.querySelectorAll('input[type=checkbox][name="' + el.name + '"]');
+      var vals = [];
+      group.forEach(function (c) { if (c.checked) vals.push(c.value || "yes"); });
+      typed[key] = vals.join(", ");
+    } else if (el.type === "radio") {
+      if (el.checked) typed[key] = el.value;
+    } else {
+      typed[key] = el.value;
+    }
+  }, true);
+  document.addEventListener("change", function (e) {
+    var el = e.target;
+    if (el && (el.tagName === "SELECT" || el.type === "checkbox" || el.type === "radio")) {
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }, true);
+
+  function collect(scope) {
+    var data = {};
+    scope.querySelectorAll("input, select, textarea").forEach(function (el) {
+      var key = keyFor(el);
+      if (!key || el.type === "submit" || el.type === "button") return;
+      var value = "";
+      if (el.type === "checkbox") { if (el.checked) value = el.value || "yes"; }
+      else if (el.type === "radio") { if (el.checked) value = el.value; }
+      else { value = el.value || ""; }
+      if (value !== "" || !(key in data)) data[key] = value;
+    });
+    Object.keys(typed).forEach(function (key) {
+      if (typed[key] !== "" && (!data[key] || data[key] === "")) data[key] = typed[key];
+    });
+    return data;
+  }
+
+  function send(scope, resetTarget) {
+    fetch(LYPO_SUBMIT, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: LYPO_PROJECT_ID, data: collect(scope) })
+    }).then(function () {
+      if (resetTarget) {
+        resetTarget.innerHTML = '<p style="padding:1.5rem;text-align:center;font-size:1.1rem;">Thanks — your response was received.</p>';
+      } else {
+        alert("Thanks — your response was received.");
+      }
+    }).catch(function () {
+      alert("Something went wrong sending your response. Please try again.");
+    });
+  }
+
+  document.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var form = e.target;
+    var hasFields = form.querySelector && form.querySelector("input, select, textarea");
+    send(hasFields ? form : document, form);
+  });
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest("button, input[type=submit], a");
+    if (!btn || btn.closest("form")) return;
+    var label = (btn.textContent || btn.value || "").toLowerCase();
+    if (/sign up|join|submit|send|register|volunteer|rsvp|subscribe/.test(label)) {
+      e.preventDefault();
+      send(document, null);
+    }
+  });
+
+  // ---------- payments: only fire on .lypo-pay buttons ----------
+  document.addEventListener("click", function (e) {
+    var payBtn = e.target.closest && e.target.closest(".lypo-pay");
+    if (!payBtn) return;
+    e.preventDefault();
+    var amount = parseInt(payBtn.getAttribute("data-amount") || "0", 10);
+    var label = payBtn.getAttribute("data-label") || payBtn.textContent || "Payment";
+    if (!amount || amount < 100) {
+      alert("Payment amount is missing or too small.");
+      return;
+    }
+    payBtn.disabled = true;
+    var originalText = payBtn.textContent;
+    payBtn.textContent = "opening checkout…";
+    fetch((location.origin) + "/api/stripe/checkout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId: LYPO_PROJECT_ID, amount: amount, label: label })
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        payBtn.disabled = false;
+        payBtn.textContent = originalText;
+        alert(data.error || "Payments aren't available for this site yet.");
+      }
+    }).catch(function () {
+      payBtn.disabled = false;
+      payBtn.textContent = originalText;
+      alert("Couldn't reach the payment server.");
+    });
+  });
+})();
+</script>
+<div style="position:fixed;bottom:10px;right:10px;z-index:99999;">
+  <a href="${site}/gallery" target="_blank" rel="noopener"
+     style="font-family:sans-serif;font-size:11px;background:#16110e;color:#f7f1ea;padding:6px 12px;border-radius:999px;text-decoration:none;opacity:0.85;">
+    built with lypo &middot; remix this
+  </a>
+</div>`;
+
+  const html = project.html.includes("</body>")
+    ? project.html.replace("</body>", `${injected}</body>`)
+    : project.html + injected;
+
+  return (
+    <>
+      <iframe
+        srcDoc={html}
+        sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
+        style={{ position: "fixed", inset: 0, width: "100%", height: "100%", border: "none" }}
+        title={project.name}
+      />
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(function(){});`,
+        }}
+      />
+    </>
+  );
+}
