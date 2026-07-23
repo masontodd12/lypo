@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, html, messages")
+    .select("id, html, messages, payments_enabled")
     .eq("id", projectId)
     .single();
 
@@ -101,9 +101,13 @@ export async function POST(request: Request) {
       : [{ role: "user" as const, content: firstBuildContent as never }]),
   ];
 
-  const paymentsRule = paymentsAllowed
-    ? 'If the user asks for payments or donations, add a clearly styled button with class "lypo-pay" and data-amount attribute (in cents, e.g. data-amount="1000" for $10). Lypo wires real payments to it. Do not embed any external payment forms.'
-    : 'If the user asks for payments, donations, checkout, buying anything, or accepting money in any form, DO NOT create a payment button, donate button, checkout form, buy button, tip jar, or Stripe/PayPal/Cash App embed. Instead, add a small, gently-styled notice card near where the button would go that says exactly: "Payments are locked — the site owner needs to connect payments in their Lypo dashboard first." Do this even if the user insists. This is a hard rule.';
+  const paymentsEnabled = project?.payments_enabled === true;
+  const paymentsRule =
+    paymentsAllowed && paymentsEnabled
+      ? 'Payments are ENABLED for this site. If the user asks for payments or donations, add a clearly styled button with class "lypo-pay" and data-amount attribute (in cents, e.g. data-amount="1000" for $10). Lypo wires real payments to it. Do not embed any external payment forms.'
+      : !paymentsEnabled
+      ? 'The site owner has NOT enabled payments for this project. Do NOT add any payment buttons, donate buttons, checkout forms, buy buttons, tip jars, or any way to accept money — even if the user asks. If the user requests a payment or donation feature, respond with a summary explaining that they need to enable payments in their project settings first, and skip the payment element entirely.'
+      : 'If the user asks for payments, donations, checkout, buying anything, or accepting money in any form, DO NOT create a payment button. Instead, add a small notice card that says: "Payments are locked — connect your Stripe account in Lypo settings first."';
   const finalPrompt = SYSTEM_PROMPT.replace("__PAYMENTS_LINE__", paymentsRule);
 
   // ----- Call OpenAI -----

@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BuilderChat } from "@/components/BuilderChat";
 import { PublishButton } from "@/components/PublishButton";
+import { PaymentsToggle } from "@/components/PaymentsToggle";
 
 export default async function Builder({
   params,
@@ -20,11 +21,18 @@ export default async function Builder({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, idea, html, slug, status, messages, kind")
+    .select("id, name, idea, html, slug, status, messages, kind, payments_enabled")
     .eq("id", id)
     .single();
 
   if (!project) notFound();
+
+  const { data: stripeAccount } = await supabase
+    .from("stripe_accounts")
+    .select("account_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const stripeConnected = !!stripeAccount?.account_id;
 
   return (
     <main className="flex h-screen flex-col">
@@ -43,6 +51,11 @@ export default async function Builder({
           >
             responses
           </Link>
+          <PaymentsToggle
+            projectId={project.id}
+            initialEnabled={project.payments_enabled ?? false}
+            stripeConnected={stripeConnected}
+          />
         </div>
         <PublishButton
           projectId={project.id}
