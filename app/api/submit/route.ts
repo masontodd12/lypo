@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { rateLimit, clientIp } from "@/lib/ratelimit";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -13,7 +14,21 @@ export async function OPTIONS() {
 
 export async function POST(request: Request) {
   try {
-    const { projectId, data } = await request.json();
+    const ip = clientIp(request);
+    if (!rateLimit(`${ip}:submit`, 20, 60 * 60 * 1000).ok) {
+      return NextResponse.json(
+        { error: "Too many requests, slow down." },
+        { status: 429, headers: CORS },
+      );
+    }
+    const raw = await request.text();
+    if (raw.length > 10_000) {
+      return NextResponse.json(
+        { error: "Submission too large" },
+        { status: 413, headers: CORS },
+      );
+    }
+    const { projectId, data } = JSON.parse(raw);
     if (!projectId || !data) {
       return NextResponse.json(
         { error: "Missing fields" },

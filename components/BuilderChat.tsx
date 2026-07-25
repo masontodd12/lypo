@@ -42,6 +42,8 @@ const SITE_TYPES = [
 ];
 
 export function BuilderChat({
+  initialPages,
+  initialMultiPage,
   projectId,
   initialIdea,
   initialHtml,
@@ -49,6 +51,8 @@ export function BuilderChat({
   initialName,
   initialKind,
 }: {
+  initialPages: Record<string, string> | null;
+  initialMultiPage: boolean;
   projectId: string;
   initialIdea: string | null;
   initialHtml: string | null;
@@ -84,6 +88,44 @@ export function BuilderChat({
   const [buildSeconds, setBuildSeconds] = useState<number | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [picked, setPicked] = useState<{ tag: string; text: string } | null>(null);
+  const [multiPage, setMultiPage] = useState(initialMultiPage);
+  const [pages, setPages] = useState<Record<string, string>>(
+    initialPages ?? (initialHtml ? { home: initialHtml } : {}),
+  );
+  const [currentPage, setCurrentPage] = useState("home");
+
+  async function toggleMultiPage() {
+    const next = !multiPage;
+    setMultiPage(next);
+    const supabase = createClient();
+    await supabase
+      .from("projects")
+      .update({ multi_page: next })
+      .eq("id", projectId);
+  }
+
+  function switchPage(name: string) {
+    setCurrentPage(name);
+    setHtml(pages[name] ?? "");
+    setPicked(null);
+  }
+
+  function addPage() {
+    const raw = prompt(
+      "Name the new page (like about, menu, contact):",
+    );
+    if (!raw) return;
+    const name = raw.toLowerCase().trim().replace(/[^a-z0-9-]/g, "-").slice(0, 24);
+    if (!name || pages[name]) return;
+    setPages((prev) => ({ ...prev, [name]: "" }));
+    setCurrentPage(name);
+    setHtml("");
+    generate(
+      `Create the "${name}" page for this site. Match the existing style exactly and include the shared nav.`,
+      undefined,
+      name,
+    );
+  }
 
   // ---- #1 voice: dictate into any setter ----
   function dictate(onText: (t: string) => void) {
@@ -127,10 +169,28 @@ export function BuilderChat({
   useEffect(() => {
     function onMessage(e: MessageEvent) {
       if (e.data?.lypoPick) setPicked(e.data.lypoPick);
+      if (e.data?.lypoNavigate && typeof e.data.lypoNavigate === "string") {
+        const target = e.data.lypoNavigate;
+        setCurrentPage(target);
+        setHtml((prev) => prev); // no-op guard
+        setPages((prev) => {
+          setHtml(prev[target] ?? "");
+          return prev;
+        });
+      }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
+
+  const NAV_SCRIPT = `<script>
+document.addEventListener("click", function (e) {
+  var link = e.target.closest && e.target.closest("[data-lypo-page]");
+  if (!link) return;
+  e.preventDefault(); e.stopPropagation();
+  parent.postMessage({ lypoNavigate: link.getAttribute("data-lypo-page") }, "*");
+}, true);
+<\/script>`;
 
   const EDIT_SCRIPT = `<script>
 document.addEventListener("click", function (e) {
@@ -149,12 +209,12 @@ document.addEventListener("click", function (e) {
 }, true);
 <\/script>`;
 
-  const previewHtml =
-    editMode && html
-      ? html.includes("</body>")
-        ? html.replace("</body>", EDIT_SCRIPT + "</body>")
-        : html + EDIT_SCRIPT
-      : html;
+  const injectedScripts = NAV_SCRIPT + (editMode ? EDIT_SCRIPT : "");
+  const previewHtml = html
+    ? html.includes("</body>")
+      ? html.replace("</body>", injectedScripts + "</body>")
+      : html + injectedScripts
+    : html;
 
   const wordCount = description.trim()
     ? description.trim().split(/\s+/).length
@@ -181,7 +241,8 @@ document.addEventListener("click", function (e) {
     setUploading(false);
   }
 
-  async function generate(message: string, imageUrls?: string[]) {
+  async function generate(message: string, imageUrls?: string[], pageOverride?: string) {
+    const targetPage = pageOverride ?? currentPage;
     setBusy(true);
     setError("");
     if (!html) buildStart.current = Date.now();
@@ -197,7 +258,7 @@ document.addEventListener("click", function (e) {
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ projectId, message: finalMessage, imageUrls }),
+        body: JSON.stringify({ projectId, message: finalMessage, imageUrls, page: targetPage }),
       });
       const data = await response.json();
 
@@ -210,6 +271,7 @@ document.addEventListener("click", function (e) {
           buildStart.current = null;
         }
         setHtml(data.html);
+        setPages((prev) => ({ ...prev, [targetPage]: data.html }));
         setTab("preview");
         setMessages((prev) => [
           ...prev,
@@ -728,6 +790,17 @@ document.addEventListener("click", function (e) {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={toggleMultiPage}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                multiPage
+                  ? "border-flame bg-flame text-paper"
+                  : "border-line text-ink-soft hover:border-flame hover:text-flame"
+              }`}
+            >
+              {multiPage ? "multi-page on" : "multi-page off"}
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 setEditMode((v) => !v);
                 setPicked(null);
@@ -802,13 +875,44 @@ document.addEventListener("click", function (e) {
         </div>
         <div className="flex-1 p-4">
           {tab === "preview" ? (
-            html ? (
+            html || multiPage ? (
+              <>
+              {multiPage && (
+                <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-mist/40 px-3 py-2">
+                  {Object.keys(pages).length === 0 && (
+                    <span className="text-xs text-faint">no pages yet</span>
+                  )}
+                  {Object.keys(pages).map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => switchPage(name)}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                        currentPage === name
+                          ? "bg-ink text-paper"
+                          : "text-ink-soft hover:text-flame"
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addPage}
+                    disabled={busy}
+                    className="rounded-full border border-line px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-flame hover:text-flame disabled:opacity-40"
+                  >
+                    + add page
+                  </button>
+                </div>
+              )}
               <iframe
                 srcDoc={previewHtml}
                 sandbox="allow-scripts allow-forms allow-same-origin"
                 title="Site preview"
                 className="h-full w-full rounded-lg border border-line bg-paper"
               />
+              </>
             ) : (
               <div className="flex h-full items-center justify-center">
                 <p className="text-sm text-faint">

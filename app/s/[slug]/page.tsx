@@ -8,7 +8,7 @@ async function getProject(slug: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("projects")
-    .select("html, name, project_id:id")
+    .select("html, name, pages, slug, project_id:id")
     .eq("slug", slug)
     .eq("status", "published")
     .is("deleted_at", null)
@@ -37,7 +37,9 @@ export default async function PublicSite({
 }) {
   const { slug } = await params;
   const project = await getProject(slug);
-  if (!project?.html) notFound();
+  const pagesMap = (project?.pages ?? null) as Record<string, string> | null;
+  const pageHtml = pagesMap?.home ?? project?.html;
+  if (!project || !pageHtml) notFound();
 
   const site = process.env.NEXT_PUBLIC_SITE_URL || "";
 
@@ -65,6 +67,17 @@ export default async function PublicSite({
       }).then(function (r) { return r.json(); }).then(function (d) { return d.value; });
     }
   };
+
+  // ---------- multi-page nav ----------
+  document.addEventListener("click", function (e) {
+    var link = e.target.closest && e.target.closest("[data-lypo-page]");
+    if (!link) return;
+    e.preventDefault();
+    var page = link.getAttribute("data-lypo-page");
+    if (!page) return;
+    var base = "/s/" + ${JSON.stringify(project.slug ?? "")};
+    window.top.location.href = page === "home" ? base : base + "/" + page;
+  }, true);
 
   // ---------- form capture ----------
   var typed = {};
@@ -186,9 +199,9 @@ export default async function PublicSite({
   </a>
 </div>`;
 
-  const html = project.html.includes("</body>")
-    ? project.html.replace("</body>", `${injected}</body>`)
-    : project.html + injected;
+  const html = pageHtml.includes("</body>")
+    ? pageHtml.replace("</body>", `${injected}</body>`)
+    : pageHtml + injected;
 
   return (
     <>

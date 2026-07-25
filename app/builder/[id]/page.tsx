@@ -21,7 +21,7 @@ export default async function Builder({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, idea, html, slug, status, messages, kind, payments_enabled")
+    .select("id, name, idea, html, slug, status, messages, kind, payments_enabled, pages, multi_page")
     .eq("id", id)
     .single();
 
@@ -65,6 +65,8 @@ export default async function Builder({
       </header>
 
       <BuilderChat
+        initialPages={project.pages ?? null}
+        initialMultiPage={project.multi_page ?? false}
         projectId={project.id}
         initialIdea={project.idea}
         initialHtml={project.html}
