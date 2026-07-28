@@ -220,17 +220,75 @@ document.addEventListener("click", function (e) {
     ? description.trim().split(/\s+/).length
     : 0;
 
+  // Convert any image (including iPhone HEIC) to a browser-friendly JPEG,
+  // and downscale very large photos so uploads stay fast.
+  async function toWebFriendlyJpeg(file: File): Promise<File> {
+    let working = file;
+
+    // Step 1: HEIC/HEIF -> JPEG (browsers cannot render HEIC)
+    const isHeic =
+      /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+    if (isHeic) {
+      try {
+        const heic2any = (await import("heic2any")).default;
+        const converted = (await heic2any({
+          blob: file,
+          toType: "image/jpeg",
+          quality: 0.9,
+        })) as Blob;
+        working = new File(
+          [converted],
+          file.name.replace(/\.[^.]+$/, ".jpg"),
+          { type: "image/jpeg" },
+        );
+      } catch {
+        // If conversion fails, fall through and try the canvas path below
+      }
+    }
+
+    // Step 2: downscale + re-encode to JPEG via canvas (caps huge photos)
+    try {
+      const bitmap = await createImageBitmap(working);
+      const maxDim = 1600;
+      const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+      const w = Math.round(bitmap.width * scale);
+      const h = Math.round(bitmap.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return working;
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      const blob: Blob | null = await new Promise((res) =>
+        canvas.toBlob((b) => res(b), "image/jpeg", 0.88),
+      );
+      if (!blob) return working;
+      return new File([blob], working.name.replace(/\.[^.]+$/, ".jpg"), {
+        type: "image/jpeg",
+      });
+    } catch {
+      return working;
+    }
+  }
+
   async function uploadPhotos(files: FileList | null) {
     if (!files || files.length === 0) return;
     setUploading(true);
     setError("");
     const supabase = createClient();
 
-    for (const file of Array.from(files)) {
+    for (const original of Array.from(files)) {
+      let file = original;
+      try {
+        file = await toWebFriendlyJpeg(original);
+      } catch {
+        // keep original if conversion throws
+      }
+
       const path = `${projectId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
       const { error: uploadError } = await supabase.storage
         .from("uploads")
-        .upload(path, file);
+        .upload(path, file, { contentType: file.type || "image/jpeg" });
       if (uploadError) {
         setError(`Photo upload failed: ${uploadError.message}`);
         continue;
