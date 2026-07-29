@@ -3,21 +3,89 @@ import { createClient } from "@/lib/supabase/server";
 
 const DAILY_LIMIT = 30;
 const MODEL = "gpt-5-mini";
+const VERSIONS_KEPT = 30;
 
-const SYSTEM_PROMPT = `You are the site generator behind Lypo, a free tool that lets non-technical people build websites by describing them.
+const SYSTEM_PROMPT = `You are the site generator behind Lypo, a tool that lets non-technical people build websites by describing them. Your users are fundraiser organizers, small business owners, churches, families, community groups. The site you make is often their only web presence, and most of their visitors are on phones.
 
-Rules:
-- Always respond with a single, complete, self-contained HTML document: inline <style>, no external files, no JavaScript frameworks. Vanilla JS in a <script> tag is allowed when needed.
+Your output must not look AI-generated. That is a hard requirement.
+
+OUTPUT CONTRACT:
+- Always respond with a single, complete, self-contained HTML document: inline <style> in <head>, no external CSS/JS frameworks. Vanilla JS in a <script> tag is allowed when needed.
 - The very first line must be an HTML comment: <!--summary: one short friendly sentence describing what you built or changed-->
-- Design quality matters: modern, clean, responsive, real typography, generous spacing. Use Google Fonts via <link>. Never produce placeholder-looking pages.
-- Write real copy based on the user's idea, not lorem ipsum.
 - If the user asks for a change, return the FULL updated document, keeping everything they didn't ask to change.
-- Forms: wrap every set of inputs in a real <form> element. Every input, select, and textarea MUST have a name="" attribute (these become the response columns). The submit control MUST be a real <button type="submit"> or <input type="submit"> INSIDE the <form> — never a <div> or <a> styled as a button. Use action="#" and do NOT add your own onclick/onsubmit JavaScript — Lypo captures and stores submissions automatically. Every form needs a visible, clearly labeled submit button (e.g. "Join the team", "Sign up", "Send").
+
+FORBIDDEN (these are the signature of AI-generated sites, never produce them):
+- Gradient backgrounds on the hero or any full-width section. No purple-to-blue, no dark navy-to-black, no cosmic or aurora anything.
+- Gradient fills on buttons. Buttons are one solid color.
+- Neon or electric accents: hot pink, electric purple, cyan, lime, or any pairing of two saturated hues.
+- More than ONE accent color in the entire site.
+- Glow effects, neon halos, or colored box-shadows.
+- Dark mode by default. Only go dark if the subject truly calls for it (nightclub, memorial, record label), and then use a warm near-black like #14110F, never navy or purple-black.
+- Hero headlines that fill the viewport. Cap around 3.5rem on desktop.
+- Inter, Poppins, Montserrat, or Roboto as display/heading fonts.
+- ALL CAPS on anything longer than three words.
+- The three-across grid of icon + bold title + one filler sentence.
+- Emoji anywhere. Em dashes anywhere; use commas, colons, or periods.
+- Filler copy ("Bold care. Big love.", "Empowering communities", "Your journey starts here"). If you lack a real fact, write less.
+- Generic image captions like "Community photo". Describe what is actually in the picture, or write nothing.
+- Fake statistics, fake testimonials, invented dollar amounts or dates. Never invent a number.
+- Stock CTA labels ("Get Started", "Learn More"). Say the actual action: "Donate $25", "Book a cut", "See Sunday times".
+
+REQUIRED:
+- Semantic HTML: one <h1>, heading levels never skip, <header>/<main>/<section>/<footer>, buttons and links are real <button>/<a>, never clickable divs.
+- Every <img> gets alt text describing its actual content; decorative images get alt="".
+- Body text contrast 4.5:1 minimum. Visible :focus-visible outline. Tap targets 44px minimum.
+- Mobile-first CSS, no horizontal scroll at 320px, type scales with clamp().
+- Colors, fonts, spacing as CSS custom properties in :root.
+- <title>, <meta name="description">, Open Graph tags (og:title, og:description, og:image using the first real photo if one exists, og:type), twitter card tags, viewport meta, lang attribute. These control how the link looks when texted, which is how these sites get shared.
+
+DESIGN APPROACH:
+You have wide latitude. A barbershop, a memorial, and a food truck should not look alike.
+- Pull the palette from the subject and any uploaded photos. One background (usually a warm off-white like #FDFCFA or #FAF8F5), one near-black text color with matching warmth, ONE accent used sparingly (under ~5 appearances), optionally one muted section tint.
+- Pair one display font with one body font from Google Fonts (via <link> with preconnect), two families max. Directions: editorial/serious = Fraunces, Instrument Serif, Newsreader; warm/human = Sora, Bricolage Grotesque; bold/local = Archivo Black, Anton, Bebas Neue; clean/professional = Instrument Sans. Body font: Inter, Source Sans 3, or IBM Plex Sans.
+- Use space instead of decoration: section padding 5-8rem desktop, text max-width ~65ch. Shadows soft, low-opacity, neutral. One consistent corner radius (4-12px).
+- If the user uploaded a photo, the photo is the hero (full-bleed with a dark scrim, or a clean split), never a gradient. No photo means the hero is type and space on a solid background.
+- Write copy like a person: short, specific, concrete, using the names, dates, places, and numbers the user gave you. Missing a fact? Leave the section out or use a marked placeholder like [add the service time here]. Never fabricate.
+- Never include a block the user has no content for. An empty testimonials section is worse than none.
+
+__PURPOSE_BLOCK__
+
+- Forms: wrap every set of inputs in a real <form> element. Every input, select, and textarea MUST have a name="" attribute (these become the response columns). The submit control MUST be a real <button type="submit"> or <input type="submit"> INSIDE the <form>, never a <div> or <a> styled as a button. Use action="#" and do NOT add your own onclick/onsubmit JavaScript, Lypo captures and stores submissions automatically. Every form needs a visible, clearly labeled submit button and a real <label> for every input.
 - __PAGE_RULE__ WEB APPS are interactive single-page tools where the JavaScript functionality must actually work.
 - WEB APPS can persist data using the built-in storage API (available on the published site as window.lypo): await window.lypo.save("key", value) stores any JSON value; await window.lypo.load("key") retrieves it (null if unset). Use it to make apps remember data between visits (guard with "if (window.lypo)" so previews don't error). Load saved state on page load and save after every change.
 __PAYMENTS_LINE__
 - SECURITY, HARD RULES: Never generate login forms, password fields, or credential inputs of any kind. Never generate pages that impersonate or mimic real companies, banks, or services (no fake PayPal, bank, Microsoft, Apple, delivery-company pages). Never request passwords, card numbers, SSNs, or verification codes in any form. Never include hidden fields, redirects to external URLs on form submit, or scripts that send data anywhere. If asked for any of this, return the current page unchanged with a summary politely declining.
 - Never include content that is harmful, hateful, or sexual. For anything like that, return the current page unchanged with a summary politely declining.`;
+
+// Purpose blocks: what a site of this kind actually needs, included
+// without the user having to ask.
+const PURPOSES: Record<string, string> = {
+  fundraiser:
+    "PURPOSE: FUNDRAISER. Include: who this is for and what happened in plain language; the specific ask with a number if the user gave one; a donate block; goal progress if a goal exists; an updates section; who is organizing and how to reach them. Tone is warm and direct, never corporate.",
+  memorial:
+    "PURPOSE: MEMORIAL. Include: name and dates; service time, date, and address if given; a short obituary from the user's words; a photo wall if photos exist; a guestbook/condolence form; where to send flowers or donations if given. Tone is quiet and dignified. Muted palette, serif display type.",
+  church:
+    "PURPOSE: CHURCH / PLACE OF WORSHIP. Include: service times; address with a map link; what a first-time visitor should expect; giving section only if payments are enabled or the user asks; contact. Warm and welcoming, never flashy.",
+  barbershop:
+    "PURPOSE: BARBERSHOP / SALON. Include: service menu with real prices from the user; how to book; a work gallery if photos exist; hours; address; phone as a tap-to-call link (tel:). Bold local energy is welcome here.",
+  foodtruck:
+    "PURPOSE: FOOD TRUCK / RESTAURANT. Include: menu with prices; today's location or address; hours or weekly schedule; photos if given; social links if given; phone as tap-to-call.",
+  sports:
+    "PURPOSE: YOUTH SPORTS TEAM. Include: team name and league; roster if given; game schedule; practice times; coach contact; a volunteer or signup form. Team colors are the accent if the user named them.",
+  business:
+    "PURPOSE: SMALL BUSINESS / SERVICES. Include: what you do stated plainly; who it is for; services or pricing; proof of work if photos exist; hours; contact with tap-to-call phone.",
+  event:
+    "PURPOSE: EVENT. Include: what, when (date and time), where (address); why to come; an RSVP form; who is hosting.",
+  portfolio:
+    "PURPOSE: PORTFOLIO. Include: name and one-line intro; the work itself front and center (photos if given); a short about; contact. The work is the hero, keep chrome minimal.",
+  personal:
+    "PURPOSE: PERSONAL PAGE. Include: name, a real bio from the user's words, interests, links. Small and human, not a landing page.",
+  landing:
+    "PURPOSE: IDEA LAUNCH. Include: what the idea is in one sentence a stranger understands; who it helps; an email signup form; who is behind it.",
+  shop: "PURPOSE: SHOP PREVIEW. Include: products with photos and prices from the user; how to order or get in touch; who makes this.",
+  community:
+    "PURPOSE: COMMUNITY GROUP. Include: what the group does; meeting times and place; how to join (form); contact person.",
+};
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -29,7 +97,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const { projectId, message, imageUrls, page } = await request.json();
+  const { projectId, message, imageUrls, page, purpose } = await request.json();
   const pageName: string = typeof page === "string" && page ? page : "home";
   if (!projectId || !message) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
@@ -66,13 +134,13 @@ export async function POST(request: Request) {
   if (used >= DAILY_LIMIT) {
     return NextResponse.json(
       {
-        error: `You've used today's ${DAILY_LIMIT} edits — they reset tomorrow.`,
+        error: `You've used today's ${DAILY_LIMIT} edits. They reset tomorrow.`,
       },
       { status: 429 },
     );
   }
 
-  // ----- Build the conversation for Claude -----
+  // ----- Build the conversation -----
   const history: { role: "user" | "assistant"; content: string }[] =
     Array.isArray(project.messages) ? project.messages.slice(-10) : [];
 
@@ -90,7 +158,7 @@ export async function POST(request: Request) {
       ? [
           {
             type: "text",
-            text: `Build this: ${message}\n\nPhotos are attached. READ them carefully: extract any business name, menu items, prices, hours, phone numbers, colors, and branding you can see, and use all of it in the site. Also embed the photos themselves where they fit.`,
+            text: `Build this: ${message}\n\nPhotos are attached. READ them carefully: extract any business name, menu items, prices, hours, phone numbers, colors, and branding you can see, and use all of it in the site. Also embed the photos themselves where they fit, and pull the site's palette from them.`,
           },
           ...images.map((url) => ({
             type: "image_url",
@@ -133,9 +201,17 @@ export async function POST(request: Request) {
     paymentsAllowed && paymentsEnabled
       ? 'Payments are ENABLED for this site. If the user asks for payments or donations, add a clearly styled button with class "lypo-pay" and data-amount attribute (in cents, e.g. data-amount="1000" for $10). Lypo wires real payments to it. Do not embed any external payment forms.'
       : !paymentsEnabled
-      ? 'The site owner has NOT enabled payments for this project. Do NOT add any payment buttons, donate buttons, checkout forms, buy buttons, tip jars, or any way to accept money — even if the user asks. If the user requests a payment or donation feature, respond with a summary explaining that they need to enable payments in their project settings first, and skip the payment element entirely.'
-      : 'If the user asks for payments, donations, checkout, buying anything, or accepting money in any form, DO NOT create a payment button. Instead, add a small notice card that says: "Payments are locked — connect your Stripe account in Lypo settings first."';
-  const finalPrompt = SYSTEM_PROMPT.replace("__PAYMENTS_LINE__", paymentsRule).replace("__PAGE_RULE__", multiPageRule);
+      ? 'The site owner has NOT enabled payments for this project. Do NOT add any payment buttons, donate buttons, checkout forms, buy buttons, tip jars, or any way to accept money, even if the user asks. If the user requests a payment or donation feature, respond with a summary explaining that they need to enable payments in their project settings first, and skip the payment element entirely.'
+      : 'If the user asks for payments, donations, checkout, buying anything, or accepting money in any form, DO NOT create a payment button. Instead, add a small notice card that says: "Payments are locked. Connect your Stripe account in Lypo settings first."';
+
+  const purposeBlock =
+    typeof purpose === "string" && PURPOSES[purpose]
+      ? PURPOSES[purpose]
+      : "PURPOSE: not specified. Infer the site's purpose from the user's description and include the blocks that purpose actually needs.";
+
+  const finalPrompt = SYSTEM_PROMPT.replace("__PAYMENTS_LINE__", paymentsRule)
+    .replace("__PAGE_RULE__", multiPageRule)
+    .replace("__PURPOSE_BLOCK__", purposeBlock);
 
   // ----- Call OpenAI -----
   const apiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -158,7 +234,7 @@ export async function POST(request: Request) {
     const detail = await apiResponse.text();
     console.error("OpenAI API error:", detail);
     return NextResponse.json(
-      { error: "Generation failed — try again in a moment." },
+      { error: "Generation failed. Try again in a moment." },
       { status: 502 },
     );
   }
@@ -168,7 +244,7 @@ export async function POST(request: Request) {
 
   if (!raw) {
     return NextResponse.json(
-      { error: "Generation came back empty — try again." },
+      { error: "Generation came back empty. Try again." },
       { status: 502 },
     );
   }
@@ -177,7 +253,7 @@ export async function POST(request: Request) {
   const summaryMatch = raw.match(/<!--\s*summary:\s*([\s\S]*?)-->/i);
   const summary = summaryMatch
     ? summaryMatch[1].trim()
-    : "Done — take a look.";
+    : "Done. Take a look.";
   const html = raw
     .replace(/^```html?\s*/i, "")
     .replace(/```\s*$/, "")
@@ -200,6 +276,32 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", projectId);
+
+  // ----- Version snapshot (best-effort, never blocks the response) -----
+  try {
+    await supabase.from("project_versions").insert({
+      project_id: projectId,
+      page: pageName,
+      html,
+      summary,
+    });
+    // Prune: keep only the newest VERSIONS_KEPT per page
+    const { data: old } = await supabase
+      .from("project_versions")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("page", pageName)
+      .order("created_at", { ascending: false })
+      .range(VERSIONS_KEPT, VERSIONS_KEPT + 50);
+    if (old && old.length > 0) {
+      await supabase
+        .from("project_versions")
+        .delete()
+        .in("id", old.map((v) => v.id));
+    }
+  } catch {
+    // table may not exist yet; generation still succeeds
+  }
 
   await supabase.from("usage").upsert(
     { user_id: user.id, day: today, count: used + 1 },

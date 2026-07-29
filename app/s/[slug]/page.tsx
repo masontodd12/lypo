@@ -16,6 +16,28 @@ async function getProject(slug: string) {
   return data;
 }
 
+// The generated site renders inside an iframe, so its own <head> tags are
+// invisible to link unfurlers. Pull description + image out of the HTML and
+// surface them on the wrapper page so texted links preview properly.
+function extractMeta(html: string | null | undefined) {
+  if (!html) return { description: null, image: null };
+  const description =
+    html.match(
+      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i,
+    )?.[1] ??
+    html.match(
+      /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i,
+    )?.[1] ??
+    null;
+  const image =
+    html.match(
+      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+    )?.[1] ??
+    html.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i)?.[1] ??
+    null;
+  return { description, image };
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -23,10 +45,28 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const project = await getProject(slug);
+  const pagesMap = (project?.pages ?? null) as Record<string, string> | null;
+  const { description, image } = extractMeta(
+    pagesMap?.home ?? project?.html,
+  );
+  const title = project?.name ?? "Lypo site";
   return {
-    title: project?.name ?? "Lypo site",
+    title,
+    description: description ?? undefined,
     manifest: project ? `/api/manifest/${project.project_id}` : undefined,
     themeColor: "#e8542f",
+    openGraph: {
+      title,
+      description: description ?? undefined,
+      type: "website",
+      images: image ? [{ url: image }] : undefined,
+    },
+    twitter: {
+      card: image ? "summary_large_image" : "summary",
+      title,
+      description: description ?? undefined,
+      images: image ? [image] : undefined,
+    },
   };
 }
 
@@ -40,6 +80,14 @@ export default async function PublicSite({
   const pagesMap = (project?.pages ?? null) as Record<string, string> | null;
   const pageHtml = pagesMap?.home ?? project?.html;
   if (!project || !pageHtml) notFound();
+
+  // Count the view (best-effort, never blocks the render)
+  try {
+    const supabase = await createClient();
+    await supabase.rpc("increment_site_view", { pid: project.project_id });
+  } catch {
+    // analytics table not migrated yet; the site still renders
+  }
 
   const site = process.env.NEXT_PUBLIC_SITE_URL || "";
 

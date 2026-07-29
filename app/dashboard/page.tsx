@@ -18,6 +18,19 @@ export default async function Dashboard() {
     .is("deleted_at", null)
     .order("updated_at", { ascending: false });
 
+  // Total views per project (RLS limits this to the user's own sites)
+  const viewsByProject: Record<string, number> = {};
+  if (projects && projects.length > 0) {
+    const { data: views } = await supabase
+      .from("site_views")
+      .select("project_id, count")
+      .in("project_id", projects.map((p) => p.id));
+    for (const v of views ?? []) {
+      viewsByProject[v.project_id] =
+        (viewsByProject[v.project_id] ?? 0) + (v.count ?? 0);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-6xl px-6">
       <header className="flex items-start justify-between pt-8">
@@ -81,6 +94,7 @@ export default async function Dashboard() {
                 name={project.name}
                 status={project.status}
                 html={project.html}
+                views={viewsByProject[project.id] ?? 0}
               />
             ))}
           </div>

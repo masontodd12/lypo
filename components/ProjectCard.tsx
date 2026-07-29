@@ -10,11 +10,13 @@ export function ProjectCard({
   name,
   status,
   html,
+  views = 0,
 }: {
   id: string;
   name: string;
   status: string;
   html: string | null;
+  views?: number;
 }) {
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
@@ -82,6 +84,11 @@ export function ProjectCard({
             )}
             <p className="mt-1 text-xs tracking-widest text-faint uppercase">
               {status}
+              {status === "published" && views > 0 && (
+                <span className="normal-case tracking-normal">
+                  {" "}· {views.toLocaleString()} view{views === 1 ? "" : "s"}
+                </span>
+              )}
             </p>
           </div>
         </div>

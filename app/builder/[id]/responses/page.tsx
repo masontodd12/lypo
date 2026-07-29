@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { BroadcastForm } from "@/components/BroadcastForm";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export default async function Responses({
   params,
@@ -35,6 +38,17 @@ export default async function Responses({
       ),
     ),
   );
+
+  const emailCount = new Set(
+    (submissions ?? [])
+      .flatMap((s) =>
+        s.data && typeof s.data === "object"
+          ? Object.values(s.data as Record<string, unknown>)
+          : [],
+      )
+      .map((v) => String(v ?? "").trim().toLowerCase())
+      .filter((v) => EMAIL_RE.test(v)),
+  ).size;
 
   return (
     <main className="mx-auto max-w-6xl px-6">
@@ -71,6 +85,8 @@ export default async function Responses({
             </a>
           )}
         </div>
+
+        <BroadcastForm projectId={id} emailCount={emailCount} />
 
         {!submissions || submissions.length === 0 ? (
           <p className="mt-10 text-ink-soft">

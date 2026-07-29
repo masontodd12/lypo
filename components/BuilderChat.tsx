@@ -8,15 +8,15 @@ type Message = { role: "user" | "assistant"; content: string };
 const MIN_WORDS = 200;
 
 const STYLES = [
-  { id: "minimal", label: "minimal", blurb: "clean, airy, lots of white space", colors: ["#FFFFFF", "#F2F2F0", "#1A1A1A"], font: "font-sans", prompt: "Style: ultra-minimalistic — generous white space, restrained neutral palette with one accent, elegant typography, no clutter." },
-  { id: "bold", label: "bold", blurb: "big type, bright color, loud energy", colors: ["#FF3B30", "#FFD60A", "#111111"], font: "font-sans font-extrabold", prompt: "Style: bold and vibrant — oversized headlines, saturated colors, strong contrast, playful modern energy." },
-  { id: "warm", label: "warm", blurb: "cozy, earthy, soft and inviting", colors: ["#FFF4E6", "#D9A066", "#5A3E28"], font: "font-serif", prompt: "Style: warm and inviting — soft earthy palette, rounded corners, friendly humanist type, cozy community feel." },
-  { id: "elegant", label: "elegant", blurb: "refined, serif, quiet luxury", colors: ["#F7F5F1", "#C9B896", "#22201C"], font: "font-serif italic", prompt: "Style: elegant and refined — sophisticated serif typography, muted luxurious palette (cream, charcoal, gold accents), lots of restraint." },
-  { id: "playful", label: "playful", blurb: "rounded, fun, full of personality", colors: ["#7C4DFF", "#FF80AB", "#FFE57F"], font: "font-sans", prompt: "Style: playful and fun — rounded shapes, cheerful colors, bouncy friendly feel, illustrations-style decorative touches with CSS." },
-  { id: "dark", label: "dark", blurb: "sleek dark mode, glowing accents", colors: ["#0D0D0F", "#1F1F26", "#4ADE80"], font: "font-mono", prompt: "Style: sleek dark mode — near-black backgrounds, high contrast text, one glowing accent color, modern tech feel." },
-  { id: "retro", label: "retro", blurb: "vintage colors, nostalgic charm", colors: ["#F4E1C6", "#E76F51", "#2A9D8F"], font: "font-serif", prompt: "Style: retro vintage — 70s-inspired palette (cream, burnt orange, teal), chunky type, nostalgic charm." },
-  { id: "editorial", label: "editorial", blurb: "magazine layout, strong typography", colors: ["#FFFFFF", "#111111", "#D62828"], font: "font-serif font-bold", prompt: "Style: editorial magazine — strong typographic hierarchy, grid-based layout, black and white with one red accent, feels like a beautiful publication." },
-  { id: "organic", label: "organic", blurb: "natural greens, calm and grounded", colors: ["#F1F5EC", "#7CA982", "#2F3E2F"], font: "font-sans", prompt: "Style: organic and natural — soft greens and earth tones, gentle curves, calm grounded feeling, nature-inspired." },
+  { id: "minimal", label: "minimal", blurb: "clean, airy, lots of white space", colors: ["#FFFFFF", "#F2F2F0", "#1A1A1A"], font: "font-sans", prompt: "Style: ultra-minimal. Generous white space, warm off-white background, one restrained accent used fewer than three times, elegant typography, no decoration." },
+  { id: "bold", label: "bold", blurb: "big type, one strong color, loud energy", colors: ["#FF3B30", "#FFF8F0", "#111111"], font: "font-sans font-extrabold", prompt: "Style: bold and confident. Heavy display type (Archivo Black or Anton), large scale, high contrast, ONE saturated accent color used on large surfaces. Solid colors only, no gradients, no second accent." },
+  { id: "warm", label: "warm", blurb: "cozy, earthy, soft and inviting", colors: ["#FFF4E6", "#D9A066", "#5A3E28"], font: "font-serif", prompt: "Style: warm and inviting. Soft earthy palette, rounded corners, friendly humanist type, cozy community feel. One accent only." },
+  { id: "elegant", label: "elegant", blurb: "refined, serif, quiet luxury", colors: ["#F7F5F1", "#C9B896", "#22201C"], font: "font-serif italic", prompt: "Style: elegant and refined. Sophisticated serif display type (Fraunces or Instrument Serif), muted palette of cream and charcoal with one quiet accent, generous line-height, lots of restraint." },
+  { id: "playful", label: "playful", blurb: "rounded, fun, full of personality", colors: ["#FDFCFA", "#FF8552", "#22201C"], font: "font-sans", prompt: "Style: playful and fun. Rounded shapes, bouncy friendly feel, varied type sizes, one bright accent color. Solid colors only, no gradients, no neon." },
+  { id: "dark", label: "dark", blurb: "moody, warm dark, high contrast", colors: ["#14110F", "#28221E", "#E8A87C"], font: "font-mono", prompt: "Style: dark and moody. Warm near-black background (#14110F, never navy or purple-black), high contrast text, one warm accent. No glow effects, no neon, no gradients." },
+  { id: "retro", label: "retro", blurb: "vintage colors, nostalgic charm", colors: ["#F4E1C6", "#E76F51", "#2A9D8F"], font: "font-serif", prompt: "Style: retro vintage. 70s-inspired cream background, chunky type, nostalgic charm, burnt orange OR teal as the single accent, not both." },
+  { id: "editorial", label: "editorial", blurb: "magazine layout, strong typography", colors: ["#FFFFFF", "#111111", "#D62828"], font: "font-serif font-bold", prompt: "Style: editorial magazine. Strong typographic hierarchy with a serif display face, grid-based layout, black and white with one red accent, feels like a beautiful publication." },
+  { id: "organic", label: "organic", blurb: "natural greens, calm and grounded", colors: ["#F1F5EC", "#7CA982", "#2F3E2F"], font: "font-sans", prompt: "Style: organic and natural. Soft warm neutrals with muted green as the single accent, gentle curves, calm grounded feeling." },
 ];
 
 
@@ -29,16 +29,21 @@ const INTERVIEW = [
   { q: "anything else?", hint: "Colors you love, sections you want, vibes, details — anything." },
 ];
 
+// Purpose modes: each maps to a server-side block in /api/generate that
+// pre-loads the sections this kind of site actually needs.
 const SITE_TYPES = [
-  { id: "portfolio", label: "portfolio", blurb: "show off your work — art, photos, projects", hint: "a personal portfolio website showcasing work" },
-  { id: "cause", label: "cause / nonprofit", blurb: "rally people around something that matters", hint: "a website for a cause or nonprofit with mission, ways to help, and signups" },
-  { id: "business", label: "small business", blurb: "services, hours, contact — open for business", hint: "a small business website with services, about, hours, and contact" },
-  { id: "event", label: "event", blurb: "invite people and collect RSVPs", hint: "an event website with details, schedule, and an RSVP form" },
-  { id: "restaurant", label: "restaurant / food", blurb: "menu, photos, and how to find you", hint: "a restaurant or food website with a menu, photos, hours, and location" },
-  { id: "personal", label: "personal page", blurb: "a home for you on the internet", hint: "a personal about-me page with bio, interests, and links" },
-  { id: "community", label: "community group", blurb: "bring your club, team, or church online", hint: "a community group website with about, activities, meeting times, and a join form" },
-  { id: "landing", label: "idea launch", blurb: "a landing page for your next big thing", hint: "a startup-style landing page for an idea, with hero, benefits, and an email signup" },
-  { id: "shop", label: "shop preview", blurb: "show your products beautifully", hint: "a product showcase site displaying items with photos, descriptions, and a contact-to-order section" },
+  { id: "fundraiser", label: "fundraiser", blurb: "raise money for a person or cause", hint: "a fundraiser page" },
+  { id: "memorial", label: "memorial", blurb: "honor someone, share service details", hint: "a memorial page" },
+  { id: "church", label: "church / worship", blurb: "service times, visitors, giving", hint: "a church website" },
+  { id: "barbershop", label: "barbershop / salon", blurb: "services, prices, booking, your work", hint: "a barbershop or salon website" },
+  { id: "foodtruck", label: "food truck / restaurant", blurb: "menu, location, hours", hint: "a food business website" },
+  { id: "sports", label: "youth sports team", blurb: "roster, schedule, signups", hint: "a youth sports team website" },
+  { id: "business", label: "small business", blurb: "services, hours, contact", hint: "a small business website" },
+  { id: "event", label: "event", blurb: "invite people and collect RSVPs", hint: "an event website with an RSVP form" },
+  { id: "portfolio", label: "portfolio", blurb: "show off your work, art, photos", hint: "a personal portfolio website" },
+  { id: "community", label: "community group", blurb: "bring your club or block together", hint: "a community group website" },
+  { id: "landing", label: "idea launch", blurb: "a landing page for your next big thing", hint: "a landing page for an idea" },
+  { id: "shop", label: "shop preview", blurb: "show your products beautifully", hint: "a product showcase site" },
 ];
 
 export function BuilderChat({
@@ -93,6 +98,106 @@ export function BuilderChat({
     initialPages ?? (initialHtml ? { home: initialHtml } : {}),
   );
   const [currentPage, setCurrentPage] = useState("home");
+  const [device, setDevice] = useState<"desktop" | "phone">("desktop");
+  const [showHistory, setShowHistory] = useState(false);
+  const [versions, setVersions] = useState<
+    { id: string; summary: string | null; created_at: string }[]
+  >([]);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [roasting, setRoasting] = useState(false);
+
+  async function openHistory() {
+    if (showHistory) {
+      setShowHistory(false);
+      return;
+    }
+    setShowHistory(true);
+    setHistoryBusy(true);
+    try {
+      const res = await fetch(
+        `/api/versions?projectId=${projectId}&page=${currentPage}`,
+      );
+      const data = await res.json();
+      setVersions(data.versions ?? []);
+    } catch {
+      setVersions([]);
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  async function restoreVersion(versionId: string) {
+    if (busy || historyBusy) return;
+    setHistoryBusy(true);
+    try {
+      const res = await fetch("/api/versions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId, versionId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setHtml(data.html);
+        setPages((prev) => ({ ...prev, [data.page ?? currentPage]: data.html }));
+        setShowHistory(false);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "Restored an earlier version." },
+        ]);
+      } else {
+        setError(data.error ?? "Couldn't restore that version.");
+      }
+    } catch {
+      setError("Couldn't reach the server.");
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  async function roast() {
+    if (busy || roasting || !html) return;
+    setRoasting(true);
+    setError("");
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: "roast my site" },
+    ]);
+    try {
+      const res = await fetch("/api/roast", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId, page: currentPage }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: data.roast },
+        ]);
+      } else {
+        setError(data.error ?? "The roast fell flat.");
+        setMessages((prev) => prev.slice(0, -1));
+      }
+    } catch {
+      setError("Couldn't reach the server.");
+      setMessages((prev) => prev.slice(0, -1));
+    } finally {
+      setRoasting(false);
+    }
+  }
+
+  function downloadHtml() {
+    if (!html) return;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(projectName || "site").replace(/[^a-zA-Z0-9-_]+/g, "-")}${
+      currentPage === "home" ? "" : `-${currentPage}`
+    }.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function toggleMultiPage() {
     const next = !multiPage;
@@ -316,7 +421,13 @@ document.addEventListener("click", function (e) {
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ projectId, message: finalMessage, imageUrls, page: targetPage }),
+        body: JSON.stringify({
+          projectId,
+          message: finalMessage,
+          imageUrls,
+          page: targetPage,
+          purpose: siteType ?? undefined,
+        }),
       });
       const data = await response.json();
 
@@ -882,6 +993,75 @@ document.addEventListener("click", function (e) {
                 click anything in the preview →
               </span>
             )}
+            <button
+              type="button"
+              onClick={openHistory}
+              disabled={busy}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                showHistory
+                  ? "border-flame bg-flame text-paper"
+                  : "border-line text-ink-soft hover:border-flame hover:text-flame"
+              } disabled:opacity-40`}
+            >
+              history
+            </button>
+            <button
+              type="button"
+              onClick={roast}
+              disabled={busy || roasting}
+              className="rounded-full border border-line px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-flame hover:text-flame disabled:opacity-40"
+            >
+              {roasting ? "roasting…" : "roast it"}
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                generate(
+                  "Make the entire site bilingual: English and Spanish. Add a small EN / ES language toggle in the top corner that switches all visible text (vanilla JS, both languages in the document). Translate naturally, not word for word. Keep the design exactly as it is.",
+                )
+              }
+              disabled={busy}
+              className="rounded-full border border-line px-3 py-1 text-xs font-medium text-ink-soft transition hover:border-flame hover:text-flame disabled:opacity-40"
+            >
+              en / español
+            </button>
+          </div>
+        )}
+
+        {showHistory && (
+          <div className="mt-3 max-h-48 overflow-y-auto rounded-xl border border-line bg-paper p-2">
+            {historyBusy && versions.length === 0 ? (
+              <p className="px-2 py-1 text-xs text-faint">loading…</p>
+            ) : versions.length === 0 ? (
+              <p className="px-2 py-1 text-xs text-faint">
+                No versions yet. Every change you make from now on is saved
+                here.
+              </p>
+            ) : (
+              versions.map((v) => (
+                <div
+                  key={v.id}
+                  className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-mist"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-xs">
+                      {v.summary ?? "untitled change"}
+                    </p>
+                    <p className="text-[10px] text-faint">
+                      {new Date(v.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => restoreVersion(v.id)}
+                    disabled={historyBusy || busy}
+                    className="shrink-0 text-xs font-medium text-flame transition hover:underline disabled:opacity-40"
+                  >
+                    restore
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         )}
 
@@ -930,6 +1110,32 @@ document.addEventListener("click", function (e) {
               {t}
             </button>
           ))}
+          <div className="ml-auto flex items-center gap-1">
+            {tab === "preview" &&
+              (["desktop", "phone"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDevice(d)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    device === d
+                      ? "bg-ink text-paper"
+                      : "text-ink-soft hover:text-ink"
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+            {html && (
+              <button
+                type="button"
+                onClick={downloadHtml}
+                className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-ink-soft transition hover:border-flame hover:text-flame"
+              >
+                download code
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex-1 p-4">
           {tab === "preview" ? (
@@ -964,12 +1170,23 @@ document.addEventListener("click", function (e) {
                   </button>
                 </div>
               )}
-              <iframe
-                srcDoc={previewHtml}
-                sandbox="allow-scripts allow-forms allow-same-origin"
-                title="Site preview"
-                className="h-full w-full rounded-lg border border-line bg-paper"
-              />
+              {device === "phone" ? (
+                <div className="flex h-full items-start justify-center overflow-hidden py-2">
+                  <iframe
+                    srcDoc={previewHtml}
+                    sandbox="allow-scripts allow-forms allow-same-origin"
+                    title="Site preview (phone)"
+                    className="h-full w-[390px] shrink-0 rounded-[1.5rem] border-4 border-ink bg-paper shadow-lg"
+                  />
+                </div>
+              ) : (
+                <iframe
+                  srcDoc={previewHtml}
+                  sandbox="allow-scripts allow-forms allow-same-origin"
+                  title="Site preview"
+                  className="h-full w-full rounded-lg border border-line bg-paper"
+                />
+              )}
               </>
             ) : (
               <div className="flex h-full items-center justify-center">

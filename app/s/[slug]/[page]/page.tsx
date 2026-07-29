@@ -39,6 +39,14 @@ export default async function PublicSubPage({
   const pageHtml = pagesMap?.[page];
   if (!project || !pageHtml) notFound();
 
+  // Count the view (best-effort, never blocks the render)
+  try {
+    const supabase = await createClient();
+    await supabase.rpc("increment_site_view", { pid: project.project_id });
+  } catch {
+    // analytics table not migrated yet; the site still renders
+  }
+
   const site = process.env.NEXT_PUBLIC_SITE_URL || "";
 
   const injected = `
