@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { appOrigin } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +49,10 @@ export default async function PublicSubPage({
     // analytics table not migrated yet; the site still renders
   }
 
-  const site = process.env.NEXT_PUBLIC_SITE_URL || "";
+  const site = appOrigin();
+
+  const requestHost = ((await headers()).get("host") ?? "").toLowerCase();
+  const navBase = requestHost.startsWith(`${slug}.`) ? "" : `/s/${slug}`;
 
   const injected = `
 <script>
@@ -62,8 +67,8 @@ export default async function PublicSubPage({
     e.preventDefault();
     var p = link.getAttribute("data-lypo-page");
     if (!p) return;
-    var base = "/s/" + ${JSON.stringify(slug)};
-    window.top.location.href = p === "home" ? base : base + "/" + p;
+    var base = ${JSON.stringify(navBase)};
+    window.top.location.href = p === "home" ? (base || "/") : base + "/" + p;
   }, true);
 
   window.lypo = {

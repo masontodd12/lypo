@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { siteUrlFor, appOrigin } from "@/lib/site-url";
 
 // Weekly stats email: "your site got 240 views, 12 responses this week."
 // Triggered by Vercel cron (see vercel.json). Guarded by CRON_SECRET.
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
   const supabase = createAdminClient();
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const weekAgoDay = weekAgo.toISOString().slice(0, 10);
-  const site = process.env.NEXT_PUBLIC_SITE_URL || "https://lypo.dev";
+  const site = appOrigin();
 
   const { data: projects } = await supabase
     .from("projects")
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
       .map((p) => {
         const v = viewsBy[p.id] ?? 0;
         const r = subsBy[p.id] ?? 0;
-        const url = p.slug ? `${site}/s/${p.slug}` : site;
+        const url = p.slug ? siteUrlFor(p.slug) : site;
         return `<tr>
           <td style="padding:8px 12px 8px 0;"><a href="${url}" style="color:#221C17;font-weight:600;text-decoration:none;">${p.name}</a></td>
           <td style="padding:8px 12px;text-align:right;">${v} view${v === 1 ? "" : "s"}</td>

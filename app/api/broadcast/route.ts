@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/ratelimit";
+import { siteUrlFor, appOrigin } from "@/lib/site-url";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MAX_RECIPIENTS = 200;
@@ -78,8 +79,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const site = process.env.NEXT_PUBLIC_SITE_URL || "https://lypo.dev";
-  const siteUrl = project.slug ? `${site}/s/${project.slug}` : site;
+  const siteUrl = project.slug ? siteUrlFor(project.slug) : appOrigin();
   const safeBody = String(body)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { appOrigin } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +91,14 @@ export default async function PublicSite({
     // analytics table not migrated yet; the site still renders
   }
 
-  const site = process.env.NEXT_PUBLIC_SITE_URL || "";
+  const site = appOrigin();
+
+  // Multi-page nav has to know where it lives. On my-site.lypo.dev the pages
+  // are at "/about"; on lypo.dev they're at "/s/my-site/about".
+  const requestHost = ((await headers()).get("host") ?? "").toLowerCase();
+  const navBase = requestHost.startsWith(`${project.slug}.`)
+    ? ""
+    : `/s/${project.slug ?? ""}`;
 
   const injected = `
 <script>
@@ -123,8 +132,8 @@ export default async function PublicSite({
     e.preventDefault();
     var page = link.getAttribute("data-lypo-page");
     if (!page) return;
-    var base = "/s/" + ${JSON.stringify(project.slug ?? "")};
-    window.top.location.href = page === "home" ? base : base + "/" + page;
+    var base = ${JSON.stringify(navBase)};
+    window.top.location.href = page === "home" ? (base || "/") : base + "/" + page;
   }, true);
 
   // ---------- form capture ----------
@@ -220,7 +229,7 @@ export default async function PublicSite({
     payBtn.disabled = true;
     var originalText = payBtn.textContent;
     payBtn.textContent = "opening checkout…";
-    fetch((location.origin) + "/api/stripe/checkout", {
+    fetch(${JSON.stringify(site + "/api/stripe/checkout")}, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ projectId: LYPO_PROJECT_ID, amount: amount, label: label })

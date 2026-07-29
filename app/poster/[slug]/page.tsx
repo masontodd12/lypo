@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/PrintButton";
+import { siteUrlFor } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +22,7 @@ export default async function Poster({
 
   if (!project) notFound();
 
-  const site = process.env.NEXT_PUBLIC_SITE_URL || "";
-  const liveUrl = `${site}/s/${slug}`;
+  const liveUrl = siteUrlFor(slug);
   const qr = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=10&data=${encodeURIComponent(liveUrl)}`;
 
   return (

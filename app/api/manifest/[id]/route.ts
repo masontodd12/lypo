@@ -17,7 +17,10 @@ export async function GET(
     {
       name: project?.name ?? "Lypo App",
       short_name: (project?.name ?? "Lypo").slice(0, 12),
-      start_url: `/s/${project?.slug ?? ""}`,
+      // Relative so the installed app stays on whichever host it was added
+      // from, whether that is <slug>.lypo.dev or lypo.dev/s/<slug>.
+      start_url: ".",
+      scope: ".",
       display: "standalone",
       background_color: "#fdfcfa",
       theme_color: "#e8542f",

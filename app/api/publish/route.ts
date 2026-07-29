@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { RESERVED_SUBDOMAINS } from "@/lib/site-url";
 
 const SLUG_RULE = /^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])?$/;
 
@@ -40,6 +41,13 @@ export async function POST(request: Request) {
             "Links can use lowercase letters, numbers, and hyphens (3-40 characters).",
         },
         { status: 400 },
+      );
+    }
+    // Slugs become subdomains, so platform names are off limits.
+    if (RESERVED_SUBDOMAINS.has(cleaned)) {
+      return NextResponse.json(
+        { error: `"${cleaned}" is reserved. Try another name.` },
+        { status: 409 },
       );
     }
     // Is it taken by someone else?

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BuilderChat } from "@/components/BuilderChat";
 import { PublishButton } from "@/components/PublishButton";
 import { PaymentsToggle } from "@/components/PaymentsToggle";
+import { appHost } from "@/lib/site-url";
 
 export default async function Builder({
   params,
@@ -61,6 +62,10 @@ export default async function Builder({
           projectId={project.id}
           initialSlug={project.slug}
           initialStatus={project.status}
+          appHost={appHost()}
+          pathRouting={
+            appHost().startsWith("localhost") || appHost().endsWith(".vercel.app")
+          }
         />
       </header>
 

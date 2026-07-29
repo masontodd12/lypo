@@ -6,10 +6,16 @@ export function PublishButton({
   projectId,
   initialSlug,
   initialStatus,
+  appHost,
+  pathRouting,
 }: {
   projectId: string;
   initialSlug: string | null;
   initialStatus: string;
+  /** Bare app host, e.g. "lypo.dev". */
+  appHost: string;
+  /** True in local dev and previews, where wildcard DNS doesn't exist. */
+  pathRouting: boolean;
 }) {
   const [slug, setSlug] = useState(initialSlug);
   const [status, setStatus] = useState(initialStatus);
@@ -20,7 +26,18 @@ export function PublishButton({
   const [story, setStory] = useState("");
   const [error, setError] = useState("");
 
-  const liveUrl = slug ? `/s/${slug}` : null;
+  // Canonical published address: my-site.lypo.dev in production,
+  // /s/my-site locally and on preview deploys.
+  const liveUrl = slug
+    ? pathRouting
+      ? `/s/${slug}`
+      : `https://${slug}.${appHost}`
+    : null;
+  const liveLabel = slug
+    ? pathRouting
+      ? `/s/${slug}`
+      : `${slug}.${appHost}`
+    : null;
 
   async function publish(withSlug?: string) {
     setBusy(true);
@@ -58,7 +75,11 @@ export function PublishButton({
 
   function copyLink() {
     if (!liveUrl) return;
-    navigator.clipboard.writeText(`${window.location.origin}${liveUrl}`);
+    navigator.clipboard.writeText(
+      liveUrl.startsWith("http")
+        ? liveUrl
+        : `${window.location.origin}${liveUrl}`,
+    );
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
@@ -71,6 +92,7 @@ export function PublishButton({
             href={liveUrl}
             target="_blank"
             rel="noopener noreferrer"
+            title={liveLabel ?? undefined}
             className="text-sm font-medium text-ink-soft transition hover:text-flame"
           >
             view live ↗
@@ -112,8 +134,8 @@ export function PublishButton({
             This becomes your site&apos;s address. Lowercase letters, numbers,
             and hyphens.
           </p>
-          <div className="mt-4 flex items-center gap-1 border-b-2 border-ink py-2 text-sm focus-within:border-flame">
-            <span className="shrink-0 text-faint">/s/</span>
+          <div className="mt-4 flex items-center gap-0.5 border-b-2 border-ink py-2 text-sm focus-within:border-flame">
+            {pathRouting && <span className="shrink-0 text-faint">/s/</span>}
             <input
               value={desired}
               onChange={(e) =>
@@ -123,9 +145,12 @@ export function PublishButton({
               }
               placeholder="second-harvest"
               aria-label="Custom link name"
-              className="w-full bg-transparent outline-none placeholder:text-faint"
+              className="w-full min-w-0 bg-transparent outline-none placeholder:text-faint"
               autoFocus
             />
+            {!pathRouting && (
+              <span className="shrink-0 text-faint">.{appHost}</span>
+            )}
           </div>
           <p className="mt-4 text-xs text-ink-soft">
             what is this for? <span className="text-faint">(one line, optional)</span>

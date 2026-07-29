@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { siteUrlFor } from "@/lib/site-url";
 
 // Creates a checkout session that pays the SITE OWNER's connected account.
 // Called from published sites when a visitor clicks a .lypo-pay button.
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const site = process.env.NEXT_PUBLIC_SITE_URL!;
+  const liveUrl = siteUrlFor(project.slug);
   const session = await stripe.checkout.sessions.create(
     {
       mode: "payment",
@@ -67,8 +68,8 @@ export async function POST(request: Request) {
           quantity: 1,
         },
       ],
-      success_url: `${site}/s/${project.slug}?paid=1`,
-      cancel_url: `${site}/s/${project.slug}`,
+      success_url: `${liveUrl}?paid=1`,
+      cancel_url: liveUrl,
     },
     { stripeAccount: account.account_id }, // money goes to the site owner
   );
