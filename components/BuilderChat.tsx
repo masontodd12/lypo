@@ -34,6 +34,104 @@ type MenuRow =
   | { kind: "section"; label: string }
   | { kind: "item"; name: string; price: string };
 
+// ---- paste-a-menu parser -------------------------------------------------
+// Most restaurants already have their menu typed somewhere. This turns a
+// pasted blob into editable rows. It gets most of it right; the grid is
+// there so the owner can fix whatever it misses.
+const PRICE_RE =
+  /\$\s?\.?\d[\d,]*(?:\.\d{1,2})?(?:\s*\/\s*\$?\s?\.?\d[\d,]*(?:\.\d{1,2})?)*/;
+const MENU_JUNK_RE =
+  /^(\*+|copyright.*|powered by.?|this website uses cookies.?|we use cookies.*|accept|order online|order now|home|menu|our menu|full menu|welcome|gift cards|contact|contact us|about|about us|hours|location|cart|sign in|log in|search|follow us)$/i;
+// Words that almost always end a section heading rather than an item name.
+const SECTION_WORD =
+  /(sauces|seasonings|flavors|flavours|sides|drinks|beverages|desserts|extras|toppings|combos|plates|platters|entrees|appetizers|starters|wings|specials|salads|sandwiches|burgers|tacos|soups|baskets|dinners|meals|breakfast|lunch|dinner|catering)$/i;
+
+export function parseMenuText(raw: string): MenuRow[] {
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1"))
+    .map((l) => l.replace(/^[\s*\-–—•·]+/, "").trim())
+    .map((l) => l.replace(/\s{2,}/g, " "))
+    .filter(Boolean)
+    .filter((l) => !/^https?:\/\//i.test(l))
+    .filter((l) => !MENU_JUNK_RE.test(l));
+
+  const priceOf = (l: string) => l.match(PRICE_RE);
+  const isPriceOnly = (l: string) => {
+    const m = priceOf(l);
+    return (
+      !!m && l.slice(0, m.index).replace(/[\s\-–—:.]+$/, "").trim() === ""
+    );
+  };
+  const MAX_NAME = 45;
+
+  const rows: MenuRow[] = [];
+  let pending: string | null = null;
+  let inRun = false;
+  const flush = () => {
+    if (pending) {
+      rows.push({ kind: "item", name: pending, price: "" });
+      pending = null;
+    }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = priceOf(line);
+
+    // "Wings $12.99", or a bare "$12.99" belonging to the line above
+    if (m) {
+      const price = m[0].replace(/\s+/g, "");
+      const name = line
+        .slice(0, m.index)
+        .replace(/[\s\-–—:.]+$/, "")
+        .trim();
+      if (name) {
+        flush();
+        rows.push({ kind: "item", name, price });
+      } else if (pending) {
+        rows.push({ kind: "item", name: pending, price });
+        pending = null;
+      }
+      inRun = false;
+      continue;
+    }
+
+    // Bare text with a price on the next line is an item name.
+    if (i + 1 < lines.length && isPriceOnly(lines[i + 1])) {
+      flush();
+      pending = line;
+      inRun = false;
+      continue;
+    }
+
+    // Long bare text with no price is prose, not a menu item.
+    if (line.length > MAX_NAME) {
+      flush();
+      inRun = false;
+      continue;
+    }
+
+    // Short bare lines: the first heads the run, the rest are items.
+    flush();
+    if (!inRun || SECTION_WORD.test(line)) {
+      rows.push({ kind: "section", label: line });
+      inRun = true;
+    } else {
+      rows.push({ kind: "item", name: line, price: "" });
+    }
+  }
+  flush();
+
+  // Drop empty sections and sections not followed by an item.
+  return rows.filter((r, i) => {
+    if (r.kind === "item") return r.name.trim() !== "";
+    if (r.label.trim() === "") return false;
+    const next = rows[i + 1];
+    return !!next && next.kind === "item";
+  });
+}
+
 const INTERVIEW: Question[] = [
   { q: "what's it called?", hint: "The name of your site, business, group, or idea." },
   { q: "who is it for?", hint: "Who should visit this: customers, neighbors, friends, donors?" },
@@ -146,6 +244,25 @@ export function BuilderChat({
     { kind: "section", label: "" },
     { kind: "item", name: "", price: "" },
   ]);
+  const [pasting, setPasting] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [pasteNote, setPasteNote] = useState("");
+
+  function applyPastedMenu() {
+    const parsed = parseMenuText(pasteText);
+    if (parsed.length === 0) {
+      setPasteNote("Couldn't find any items in that. Try including prices.");
+      return;
+    }
+    const items = parsed.filter((r) => r.kind === "item").length;
+    const sections = parsed.filter((r) => r.kind === "section").length;
+    setMenuRows(parsed);
+    setPasting(false);
+    setPasteText("");
+    setPasteNote(
+      `Found ${items} item${items === 1 ? "" : "s"} in ${sections} section${sections === 1 ? "" : "s"}. Check it over and fix anything that landed wrong.`,
+    );
+  }
 
   const filledMenu = menuRows.filter((r) =>
     r.kind === "item" ? r.name.trim() !== "" : r.label.trim() !== "",
@@ -925,6 +1042,73 @@ document.addEventListener("click", function (e) {
 
         {current.kind === "menu" ? (
           <div className="mt-6">
+            {/* paste an existing menu instead of typing it */}
+            {pasting ? (
+              <div className="mb-5 rounded-xl border border-line bg-paper p-4">
+                <p className="text-sm font-medium">paste your menu</p>
+                <p className="mt-1 text-xs text-ink-soft">
+                  Copy it from your website, your online ordering page, or
+                  anywhere you already have it typed. Prices can be on the same
+                  line or the line below.
+                </p>
+                <textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  rows={9}
+                  autoFocus
+                  aria-label="Paste your existing menu"
+                  placeholder={
+                    "Combos\n3 PC Whole Wing Combo\n$11.99\n\nParty Wings\n10 PC Party Wings  $13.61"
+                  }
+                  className="mt-3 w-full resize-y rounded-lg border border-line bg-paper p-3 font-mono text-xs leading-relaxed outline-none focus:border-flame"
+                />
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={applyPastedMenu}
+                    disabled={!pasteText.trim()}
+                    className="rounded-full bg-flame px-5 py-2 text-sm font-medium text-paper transition hover:bg-flame-bright disabled:opacity-40"
+                  >
+                    convert to list
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPasting(false);
+                      setPasteText("");
+                      setPasteNote("");
+                    }}
+                    className="text-sm text-faint transition hover:text-flame"
+                  >
+                    cancel
+                  </button>
+                </div>
+                {pasteNote && (
+                  <p className="mt-2 text-xs text-flame">{pasteNote}</p>
+                )}
+              </div>
+            ) : (
+              <div className="mb-5 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasting(true);
+                    setPasteNote("");
+                  }}
+                  className="rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame"
+                >
+                  paste an existing menu
+                </button>
+                <span className="text-xs text-faint">
+                  Already have it typed somewhere? Paste it and we&apos;ll
+                  build the list for you.
+                </span>
+              </div>
+            )}
+            {!pasting && pasteNote && (
+              <p className="mb-3 text-xs text-ink-soft">{pasteNote}</p>
+            )}
+
             <div className="space-y-2">
               {menuRows.map((row, i) =>
                 row.kind === "section" ? (
@@ -1008,6 +1192,22 @@ document.addEventListener("click", function (e) {
               >
                 + add section
               </button>
+              {filledMenu.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!confirm("Clear the whole menu and start over?")) return;
+                    setMenuRows([
+                      { kind: "section", label: "" },
+                      { kind: "item", name: "", price: "" },
+                    ]);
+                    setPasteNote("");
+                  }}
+                  className="ml-auto text-xs text-faint transition hover:text-flame"
+                >
+                  clear all
+                </button>
+              )}
             </div>
             <p className="mt-3 text-xs text-faint">
               Leave a price blank if it changes. We&apos;ll show the item
