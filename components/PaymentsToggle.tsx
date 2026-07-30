@@ -41,8 +41,8 @@ export function PaymentsToggle({
         !stripeConnected
           ? "Connect Stripe in Settings to enable payments"
           : enabled
-          ? "Payments on — click to disable"
-          : "Payments off — click to enable"
+          ? "Payments on. Click to disable."
+          : "Payments off. Click to enable."
       }
       className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:opacity-40 ${
         enabled

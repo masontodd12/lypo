@@ -45,18 +45,34 @@ const INTERVIEW: Question[] = [
 // Purpose-specific interviews. A restaurant needs different questions than a
 // portfolio, and asking the right ones is most of what makes the site good.
 const RESTAURANT_INTERVIEW: Question[] = [
-  { q: "what's the restaurant called?", hint: "Exactly how you want it written on the sign." },
-  { q: "what kind of food?", hint: "Soul food, tacos, wings, Caribbean, coffee shop. However you'd describe it to somebody." },
   {
-    q: "tell me your story",
-    hint: "How did it start? Who's behind it? What makes it yours? This becomes your home page, so give me real details, not a slogan.",
+    q: "what is the restaurant called",
+    hint: "Exactly how you want it written on the sign.",
+  },
+  {
+    q: "what kind of food do you serve",
+    hint: "However you would describe it to a customer. Soul food, tacos, wings, Caribbean, coffee and pastries.",
+  },
+  {
+    q: "tell us your story",
+    hint: "How did it start, who is behind it, and what makes it yours? This becomes the main section of your home page, so real details work better than a slogan.",
     long: true,
   },
-  { q: "hours and address?", hint: "Days and times you're open, plus the address people should show up to." },
-  { q: "phone number?", hint: "For orders or reservations. We make it tappable on phones." },
+  {
+    q: "when are you open",
+    hint: "Days and hours. Include anything unusual, like closed Mondays or a different Saturday schedule.",
+  },
+  {
+    q: "where are you located",
+    hint: "Full street address. We turn it into a map link customers can open on their phone.",
+  },
+  {
+    q: "what number should customers call",
+    hint: "For orders or reservations. We make it tap-to-call on phones.",
+  },
   {
     q: "your menu",
-    hint: "Add each item and what it costs. Use sections to group them, like appetizers or plates.",
+    hint: "Add each item and what it costs. Group them into sections like appetizers, plates, or drinks.",
     kind: "menu",
   },
 ];
@@ -332,7 +348,7 @@ export function BuilderChat({
     };
     const SR = w.webkitSpeechRecognition;
     if (!SR) {
-      alert("Voice input needs Chrome or Edge — type it instead for now.");
+      alert("Voice input needs Chrome or Edge. Type it instead for now.");
       return;
     }
     const rec = new SR();
@@ -667,18 +683,22 @@ document.addEventListener("click", function (e) {
     return (
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
         <h2 className="font-display text-3xl font-semibold tracking-tight">
-          name your project<span className="text-flame">.</span>
+          what is it called<span className="text-flame">?</span>
         </h2>
+        <p className="mt-2 text-sm text-ink-soft">
+          The name of your business, organization, or project. You can change
+          it later.
+        </p>
         <input
           value={projectName}
           onChange={(e) => setProjectName(e.target.value)}
-          placeholder="e.g. Second Harvest Neighbors"
+          placeholder="e.g. Riverside Barbershop"
           aria-label="Project name"
-          className="mt-6 w-full border-b-2 border-ink bg-transparent py-3 text-lg outline-none placeholder:text-faint focus:border-flame"
+          className="mt-5 w-full border-b-2 border-ink bg-transparent py-3 text-lg outline-none placeholder:text-faint focus:border-flame"
         />
 
         <p className="font-display mt-12 text-xl font-semibold tracking-tight">
-          what kind of thing<span className="text-flame">?</span>
+          what are you building<span className="text-flame">?</span>
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <button
@@ -694,8 +714,8 @@ document.addEventListener("click", function (e) {
               website<span className="text-flame">.</span>
             </p>
             <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-              A beautiful one-page site — for a cause, business, portfolio, or
-              event.
+              A site customers can find, with your story, hours, prices, and a
+              way to reach you.
             </p>
           </button>
           <button
@@ -711,8 +731,8 @@ document.addEventListener("click", function (e) {
               web app<span className="text-flame">.</span>
             </p>
             <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-              An interactive tool — a calculator, tracker, quiz, or something
-              that does things.
+              An interactive tool such as a calculator, tracker, or quiz.
+              Something people use, not just read.
             </p>
           </button>
         </div>
@@ -740,10 +760,11 @@ document.addEventListener("click", function (e) {
           ← back
         </button>
         <p className="font-display mt-4 text-3xl font-semibold tracking-tight">
-          what are we making<span className="text-flame">?</span>
+          what kind of business<span className="text-flame">?</span>
         </p>
         <p className="mt-2 text-sm text-ink-soft">
-          Here&apos;s what people build with lypo. Pick the closest fit.
+          This determines what we ask you next and which sections your site
+          gets. Pick the closest match.
         </p>
         <div className="mt-8 grid w-full max-w-4xl gap-4 sm:grid-cols-3">
           {SITE_TYPES.map((type) => (
@@ -767,8 +788,8 @@ document.addEventListener("click", function (e) {
           ))}
         </div>
         <p className="mt-6 text-xs text-faint">
-          Not seeing yours? Pick the closest — you can make it anything in the
-          next step.
+          Not seeing yours? Pick the closest match. You can change anything
+          after it builds.
         </p>
       </div>
     );
@@ -786,10 +807,11 @@ document.addEventListener("click", function (e) {
           ← back ({siteType})
         </button>
         <p className="font-display mt-4 text-3xl font-semibold tracking-tight">
-          pick a vibe<span className="text-flame">.</span>
+          choose your look<span className="text-flame">.</span>
         </p>
         <p className="mt-2 text-sm text-ink-soft">
-          This sets the whole look. You can change it anytime later.
+          This sets your colors and typography. You can change it at any point
+          after your site is built.
         </p>
         <div className="mt-8 grid w-full max-w-4xl gap-4 sm:grid-cols-3">
           {STYLES.map((style) => (
@@ -1514,7 +1536,7 @@ document.addEventListener("click", function (e) {
             )
           ) : (
             <pre className="h-full overflow-auto rounded-lg border border-line bg-paper p-4 text-xs leading-relaxed">
-              {html || "No code yet — build something first."}
+              {html || "No code yet. Build something first."}
             </pre>
           )}
         </div>

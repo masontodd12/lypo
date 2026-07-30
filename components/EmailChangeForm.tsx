@@ -29,7 +29,7 @@ export function EmailChangeForm({ currentEmail }: { currentEmail: string }) {
     } else {
       setStatus("sent");
       setMessage(
-        `Confirmation links sent. Check both ${currentEmail} and ${value} — click the link in each to complete the change.`,
+        `Confirmation links sent. Check both ${currentEmail} and ${value}. Click the link in each to complete the change.`,
       );
     }
   }
