@@ -71,7 +71,7 @@ const PURPOSES: Record<string, string> = {
   restaurant: `PURPOSE: RESTAURANT. This is a real place people decide whether to drive to, so the site has one job: make them want to come and tell them how.
 
 HOME page must include, in roughly this order:
-- Header with the logo if one was provided, the restaurant name, and nav linking to every page
+- Header with the logo if one was provided, the restaurant name, and nav linking to every page. If a logo exists it goes in this header on EVERY page, at the same size, never stretched.
 - Hero: the name, what kind of food in plain words, and the single most useful fact (where you are, or when you're open). If a food photo exists it carries the hero.
 - Their story, written from the owner's own words. This is the section that makes a restaurant feel like a place instead of a listing, so give it real room. Do not compress it into a slogan and do not invent history.
 - Hours, laid out so a person can scan them, not buried in a paragraph
@@ -79,6 +79,12 @@ HOME page must include, in roughly this order:
 - Phone as a tap-to-call link: <a href="tel:+1XXXXXXXXXX">
 - A clear link to the menu page
 - Photos of the food or the room if any were given
+- A CUSTOMER COMMENTS section near the bottom, before the footer. Heading along the lines of "leave us a comment" or "tell us how we did". Inside a real <form action="#">, with a visible <label> for every field:
+  - <input name="name" type="text"> labeled Your name
+  - <input name="email" type="email"> labeled Email, marked optional in the label
+  - <textarea name="comment"> labeled Your comment
+  - <button type="submit">Send comment</button>
+  Keep it to those three fields. Do not add a star rating widget, do not add fake existing reviews, and do not display any comments on the page. Comments go privately to the owner.
 
 MENU page must include:
 - The same header, logo, and nav as home, identical styling
@@ -86,6 +92,7 @@ MENU page must include:
 - The menu arrives as lines formatted "item | price", where [text in brackets] is a section heading. Reproduce every item exactly as written.
 - Prices clearly separated from item names and aligned consistently, ideally with a dotted or spaced leader so the eye can track from name to price
 - Never invent a dish, a price, or a description. Where a line says NO PRICE GIVEN, render the item with no price at all rather than guessing or writing "market price".
+- A short line in the footer linking back to the comment section on the home page, so someone who just read the menu can still leave feedback.
 
 Tone is warm and confident, never corporate. A neighborhood restaurant should not read like a chain.`,
   foodtruck:

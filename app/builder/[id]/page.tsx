@@ -22,7 +22,7 @@ export default async function Builder({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, idea, html, slug, status, messages, kind, payments_enabled, pages, multi_page")
+    .select("id, name, idea, html, slug, status, messages, kind, payments_enabled, pages, multi_page, logo_url")
     .eq("id", id)
     .single();
 
@@ -80,6 +80,7 @@ export default async function Builder({
         }
         initialName={project.name}
         initialKind={project.kind}
+        initialLogo={project.logo_url ?? null}
       />
     </main>
   );

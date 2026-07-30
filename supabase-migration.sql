@@ -43,6 +43,11 @@ create policy "owners delete own versions" on project_versions
     )
   );
 
+-- ---------- brand logo ----------
+-- Kept on the project so it survives a reload and keeps getting applied
+-- to every later edit, not just the first build.
+alter table projects add column if not exists logo_url text;
+
 -- ---------- site analytics ----------
 create table if not exists site_views (
   project_id uuid not null references projects(id) on delete cascade,

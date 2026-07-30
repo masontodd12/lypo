@@ -109,6 +109,7 @@ export function BuilderChat({
   initialMessages,
   initialName,
   initialKind,
+  initialLogo,
 }: {
   initialPages: Record<string, string> | null;
   initialMultiPage: boolean;
@@ -118,6 +119,7 @@ export function BuilderChat({
   initialMessages: Message[];
   initialName: string;
   initialKind: string | null;
+  initialLogo: string | null;
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [html, setHtml] = useState(initialHtml ?? "");
@@ -138,7 +140,7 @@ export function BuilderChat({
   const [qIndex, setQIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
   const [answerDraft, setAnswerDraft] = useState("");
-  const [logo, setLogo] = useState<string | null>(null);
+  const [logo, setLogo] = useState<string | null>(initialLogo ?? null);
   const [logoBusy, setLogoBusy] = useState(false);
   const [menuRows, setMenuRows] = useState<MenuRow[]>([
     { kind: "section", label: "" },
@@ -495,10 +497,26 @@ document.addEventListener("click", function (e) {
         return;
       }
       const { data } = supabase.storage.from("uploads").getPublicUrl(path);
-      if (data?.publicUrl) setLogo(data.publicUrl);
+      if (data?.publicUrl) {
+        setLogo(data.publicUrl);
+        // Persist so later edits and reloads keep the logo.
+        await supabase
+          .from("projects")
+          .update({ logo_url: data.publicUrl })
+          .eq("id", projectId);
+      }
     } finally {
       setLogoBusy(false);
     }
+  }
+
+  async function clearLogo() {
+    setLogo(null);
+    const supabase = createClient();
+    await supabase
+      .from("projects")
+      .update({ logo_url: null })
+      .eq("id", projectId);
   }
 
   async function uploadPhotos(files: FileList | null) {
@@ -601,9 +619,8 @@ document.addEventListener("click", function (e) {
       photos.length > 0
         ? ` Use these uploaded photos in the design (as <img> tags with these exact URLs): ${photos.join(" , ")}`
         : "";
-    const logoNote = logo
-      ? ` This is their LOGO, put it in the site header at a sensible size (max-height around 48px, never stretched) and use it as the og:image: ${logo}`
-      : "";
+    // The logo instruction is added server-side from logoUrl, so it applies
+    // to every later edit too, not just this first build.
 
     const extraPages = MULTI_PAGE_PURPOSES[siteType ?? ""] ?? [];
 
@@ -626,7 +643,7 @@ document.addEventListener("click", function (e) {
           : "This is a WEBSITE: a single-page site with NO navigation tabs or menu links at the top, one continuous scrolling page.";
 
     const homeHtml = await generate(
-      `${kindNote} ${typeHint ? `Build ${typeHint}. ` : ""}${description.trim()} ${style.prompt}${photoNote}${logoNote}`,
+      `${kindNote} ${typeHint ? `Build ${typeHint}. ` : ""}${description.trim()} ${style.prompt}${photoNote}`,
       undefined,
       "home",
     );
@@ -640,7 +657,7 @@ document.addEventListener("click", function (e) {
             page === "menu"
               ? " Lay out the full menu using the items and prices the owner gave, grouped into clear sections with real headings. Prices right-aligned or clearly separated from item names. No invented items, no invented prices. If they did not give a price for something, leave the price off rather than guessing."
               : ""
-          }${logoNote}`,
+          }`,
           undefined,
           page,
         );
@@ -1081,7 +1098,7 @@ document.addEventListener("click", function (e) {
               />
               <button
                 type="button"
-                onClick={() => setLogo(null)}
+                onClick={clearLogo}
                 className="text-xs text-faint transition hover:text-flame"
               >
                 remove
