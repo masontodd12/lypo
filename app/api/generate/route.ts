@@ -68,8 +68,28 @@ const PURPOSES: Record<string, string> = {
     "PURPOSE: CHURCH / PLACE OF WORSHIP. Include: service times; address with a map link; what a first-time visitor should expect; giving section only if payments are enabled or the user asks; contact. Warm and welcoming, never flashy.",
   barbershop:
     "PURPOSE: BARBERSHOP / SALON. Include: service menu with real prices from the user; how to book; a work gallery if photos exist; hours; address; phone as a tap-to-call link (tel:). Bold local energy is welcome here.",
+  restaurant: `PURPOSE: RESTAURANT. This is a real place people decide whether to drive to, so the site has one job: make them want to come and tell them how.
+
+HOME page must include, in roughly this order:
+- Header with the logo if one was provided, the restaurant name, and nav linking to every page
+- Hero: the name, what kind of food in plain words, and the single most useful fact (where you are, or when you're open). If a food photo exists it carries the hero.
+- Their story, written from the owner's own words. This is the section that makes a restaurant feel like a place instead of a listing, so give it real room. Do not compress it into a slogan and do not invent history.
+- Hours, laid out so a person can scan them, not buried in a paragraph
+- Address as text plus a map link (https://maps.google.com/?q=<url-encoded address>)
+- Phone as a tap-to-call link: <a href="tel:+1XXXXXXXXXX">
+- A clear link to the menu page
+- Photos of the food or the room if any were given
+
+MENU page must include:
+- The same header, logo, and nav as home, identical styling
+- The full menu grouped into sections with real headings, taken from what the owner gave
+- The menu arrives as lines formatted "item | price", where [text in brackets] is a section heading. Reproduce every item exactly as written.
+- Prices clearly separated from item names and aligned consistently, ideally with a dotted or spaced leader so the eye can track from name to price
+- Never invent a dish, a price, or a description. Where a line says NO PRICE GIVEN, render the item with no price at all rather than guessing or writing "market price".
+
+Tone is warm and confident, never corporate. A neighborhood restaurant should not read like a chain.`,
   foodtruck:
-    "PURPOSE: FOOD TRUCK / RESTAURANT. Include: menu with prices; today's location or address; hours or weekly schedule; photos if given; social links if given; phone as tap-to-call.",
+    "PURPOSE: FOOD TRUCK. Include: menu with prices; today's location or address; hours or weekly schedule; photos if given; social links if given; phone as tap-to-call.",
   sports:
     "PURPOSE: YOUTH SPORTS TEAM. Include: team name and league; roster if given; game schedule; practice times; coach contact; a volunteer or signup form. Team colors are the accent if the user named them.",
   business:
@@ -97,7 +117,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const { projectId, message, imageUrls, page, purpose } = await request.json();
+  const { projectId, message, imageUrls, page, purpose, logoUrl } =
+    await request.json();
   const pageName: string = typeof page === "string" && page ? page : "home";
   if (!projectId || !message) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
@@ -209,9 +230,17 @@ export async function POST(request: Request) {
       ? PURPOSES[purpose]
       : "PURPOSE: not specified. Infer the site's purpose from the user's description and include the blocks that purpose actually needs.";
 
-  const finalPrompt = SYSTEM_PROMPT.replace("__PAYMENTS_LINE__", paymentsRule)
-    .replace("__PAGE_RULE__", multiPageRule)
-    .replace("__PURPOSE_BLOCK__", purposeBlock);
+  // A logo is not a gallery photo. It belongs in the header, at a restrained
+  // size, on every page, and it makes a good og:image.
+  const logoRule =
+    typeof logoUrl === "string" && /^https?:\/\//.test(logoUrl)
+      ? `\n\nLOGO: this site has a logo at ${logoUrl}. Put it in the site header on every page as an <img> with meaningful alt text (the business name). Constrain it with max-height between 32px and 56px and width:auto so it is never stretched or distorted. Do not put it in a photo gallery, do not repeat it down the page, and do not use it as a background. Use this same URL for og:image unless a better photo exists.`
+      : "";
+
+  const finalPrompt =
+    SYSTEM_PROMPT.replace("__PAYMENTS_LINE__", paymentsRule)
+      .replace("__PAGE_RULE__", multiPageRule)
+      .replace("__PURPOSE_BLOCK__", purposeBlock) + logoRule;
 
   // ----- Call OpenAI -----
   const apiResponse = await fetch("https://api.openai.com/v1/chat/completions", {

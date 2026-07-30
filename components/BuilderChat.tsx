@@ -21,13 +21,50 @@ const STYLES = [
 
 
 
-const INTERVIEW = [
+type Question = {
+  q: string;
+  hint: string;
+  long?: boolean;
+  /** "menu" swaps the textarea for a structured item + price list. */
+  kind?: "menu";
+};
+
+// A menu is either a section heading or an item with a price.
+type MenuRow =
+  | { kind: "section"; label: string }
+  | { kind: "item"; name: string; price: string };
+
+const INTERVIEW: Question[] = [
   { q: "what's it called?", hint: "The name of your site, business, group, or idea." },
-  { q: "who is it for?", hint: "Who should visit this — customers, neighbors, friends, donors?" },
+  { q: "who is it for?", hint: "Who should visit this: customers, neighbors, friends, donors?" },
   { q: "what should it say?", hint: "The main message, story, or info visitors need to know." },
   { q: "what should visitors do?", hint: "Sign up? Donate? Contact you? Browse your work?" },
-  { q: "anything else?", hint: "Colors you love, sections you want, vibes, details — anything." },
+  { q: "anything else?", hint: "Colors you love, sections you want, vibes, details, anything." },
 ];
+
+// Purpose-specific interviews. A restaurant needs different questions than a
+// portfolio, and asking the right ones is most of what makes the site good.
+const RESTAURANT_INTERVIEW: Question[] = [
+  { q: "what's the restaurant called?", hint: "Exactly how you want it written on the sign." },
+  { q: "what kind of food?", hint: "Soul food, tacos, wings, Caribbean, coffee shop. However you'd describe it to somebody." },
+  {
+    q: "tell me your story",
+    hint: "How did it start? Who's behind it? What makes it yours? This becomes your home page, so give me real details, not a slogan.",
+    long: true,
+  },
+  { q: "hours and address?", hint: "Days and times you're open, plus the address people should show up to." },
+  { q: "phone number?", hint: "For orders or reservations. We make it tappable on phones." },
+  {
+    q: "your menu",
+    hint: "Add each item and what it costs. Use sections to group them, like appetizers or plates.",
+    kind: "menu",
+  },
+];
+
+const INTERVIEWS: Record<string, Question[]> = {
+  restaurant: RESTAURANT_INTERVIEW,
+  foodtruck: RESTAURANT_INTERVIEW,
+};
 
 // Purpose modes: each maps to a server-side block in /api/generate that
 // pre-loads the sections this kind of site actually needs.
@@ -36,7 +73,8 @@ const SITE_TYPES = [
   { id: "memorial", label: "memorial", blurb: "honor someone, share service details", hint: "a memorial page" },
   { id: "church", label: "church / worship", blurb: "service times, visitors, giving", hint: "a church website" },
   { id: "barbershop", label: "barbershop / salon", blurb: "services, prices, booking, your work", hint: "a barbershop or salon website" },
-  { id: "foodtruck", label: "food truck / restaurant", blurb: "menu, location, hours", hint: "a food business website" },
+  { id: "restaurant", label: "restaurant", blurb: "story, menu page, hours, logo", hint: "a restaurant website" },
+  { id: "foodtruck", label: "food truck", blurb: "menu, location, hours", hint: "a food truck website" },
   { id: "sports", label: "youth sports team", blurb: "roster, schedule, signups", hint: "a youth sports team website" },
   { id: "business", label: "small business", blurb: "services, hours, contact", hint: "a small business website" },
   { id: "event", label: "event", blurb: "invite people and collect RSVPs", hint: "an event website with an RSVP form" },
@@ -82,8 +120,50 @@ export function BuilderChat({
   const [vibe, setVibe] = useState<string | null>(null);
   const [description, setDescription] = useState(initialIdea ?? "");
   const [qIndex, setQIndex] = useState(0);
-  const [answers, setAnswers] = useState<string[]>(["", "", "", "", ""]);
+  const [answers, setAnswers] = useState<string[]>([]);
   const [answerDraft, setAnswerDraft] = useState("");
+  const [logo, setLogo] = useState<string | null>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [menuRows, setMenuRows] = useState<MenuRow[]>([
+    { kind: "section", label: "" },
+    { kind: "item", name: "", price: "" },
+  ]);
+
+  const filledMenu = menuRows.filter((r) =>
+    r.kind === "item" ? r.name.trim() !== "" : r.label.trim() !== "",
+  );
+
+  // Turn the rows into something unambiguous for the generator.
+  function serializeMenu(rows: MenuRow[]): string {
+    return rows
+      .map((r) =>
+        r.kind === "section"
+          ? r.label.trim()
+            ? `\n[${r.label.trim()}]`
+            : ""
+          : r.name.trim()
+            ? `${r.name.trim()} | ${
+                r.price.trim()
+                  ? /^[\d.,]+$/.test(r.price.trim())
+                    ? `$${r.price.trim()}`
+                    : r.price.trim()
+                  : "NO PRICE GIVEN"
+              }`
+            : "",
+      )
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+  }
+
+  function updateRow(i: number, patch: Partial<MenuRow>) {
+    setMenuRows((prev) =>
+      prev.map((r, idx) => (idx === i ? ({ ...r, ...patch } as MenuRow) : r)),
+    );
+  }
+
+  // Which interview to run. Restaurants get restaurant questions.
+  const interview: Question[] = INTERVIEWS[siteType ?? ""] ?? INTERVIEW;
   const [photos, setPhotos] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -376,6 +456,35 @@ document.addEventListener("click", function (e) {
     }
   }
 
+  // Logo is kept separate from photos. It belongs in the header on every
+  // page, not in a gallery, so it gets its own slot and its own instruction.
+  async function uploadLogo(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setLogoBusy(true);
+    setError("");
+    try {
+      let file = files[0];
+      try {
+        file = await toWebFriendlyJpeg(file);
+      } catch {
+        // keep original if conversion throws
+      }
+      const supabase = createClient();
+      const path = `${projectId}/logo-${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      const { error: uploadError } = await supabase.storage
+        .from("uploads")
+        .upload(path, file, { contentType: file.type || "image/jpeg" });
+      if (uploadError) {
+        setError(`Logo upload failed: ${uploadError.message}`);
+        return;
+      }
+      const { data } = supabase.storage.from("uploads").getPublicUrl(path);
+      if (data?.publicUrl) setLogo(data.publicUrl);
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
   async function uploadPhotos(files: FileList | null) {
     if (!files || files.length === 0) return;
     setUploading(true);
@@ -404,7 +513,11 @@ document.addEventListener("click", function (e) {
     setUploading(false);
   }
 
-  async function generate(message: string, imageUrls?: string[], pageOverride?: string) {
+  async function generate(
+    message: string,
+    imageUrls?: string[],
+    pageOverride?: string,
+  ): Promise<string | null> {
     const targetPage = pageOverride ?? currentPage;
     setBusy(true);
     setError("");
@@ -427,12 +540,13 @@ document.addEventListener("click", function (e) {
           imageUrls,
           page: targetPage,
           purpose: siteType ?? undefined,
+          logoUrl: logo ?? undefined,
         }),
       });
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error ?? "Something went wrong — try again.");
+        setError(data.error ?? "Something went wrong. Try again.");
         setMessages((prev) => prev.slice(0, -1));
       } else {
         if (!html && buildStart.current) {
@@ -446,16 +560,23 @@ document.addEventListener("click", function (e) {
           ...prev,
           { role: "assistant", content: data.summary },
         ]);
+        return data.html as string;
       }
     } catch {
-      setError("Couldn't reach the server — check your connection.");
+      setError("Couldn't reach the server. Check your connection.");
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setBusy(false);
     }
+    return null;
   }
 
-  function startBuild() {
+  // Purposes that ship as a real multi-page site instead of one scroll.
+  const MULTI_PAGE_PURPOSES: Record<string, string[]> = {
+    restaurant: ["menu"],
+  };
+
+  async function startBuild() {
     const style = STYLES.find((s) => s.id === vibe);
     if (!style) return;
     setStep("build");
@@ -464,13 +585,53 @@ document.addEventListener("click", function (e) {
       photos.length > 0
         ? ` Use these uploaded photos in the design (as <img> tags with these exact URLs): ${photos.join(" , ")}`
         : "";
+    const logoNote = logo
+      ? ` This is their LOGO, put it in the site header at a sensible size (max-height around 48px, never stretched) and use it as the og:image: ${logo}`
+      : "";
+
+    const extraPages = MULTI_PAGE_PURPOSES[siteType ?? ""] ?? [];
+
+    // Multi-page purposes need the flag set before the first build so the
+    // generator writes nav links instead of section anchors.
+    if (extraPages.length > 0 && !multiPage) {
+      setMultiPage(true);
+      const supabase = createClient();
+      await supabase
+        .from("projects")
+        .update({ multi_page: true })
+        .eq("id", projectId);
+    }
+
     const kindNote =
       kind === "webapp"
         ? "This is a WEB APP: an interactive single-page tool with working JavaScript functionality, not a brochure site."
-        : "This is a WEBSITE: a single-page site with NO navigation tabs or menu links at the top — one continuous scrolling page.";
-    generate(
-      `${kindNote} ${typeHint ? `Build ${typeHint}. ` : ""}${description.trim()} ${style.prompt}${photoNote}`,
+        : extraPages.length > 0
+          ? `This is a MULTI-PAGE WEBSITE. You are building the HOME page. The site also has these pages: ${extraPages.join(", ")}. Include a header nav linking to every page.`
+          : "This is a WEBSITE: a single-page site with NO navigation tabs or menu links at the top, one continuous scrolling page.";
+
+    const homeHtml = await generate(
+      `${kindNote} ${typeHint ? `Build ${typeHint}. ` : ""}${description.trim()} ${style.prompt}${photoNote}${logoNote}`,
+      undefined,
+      "home",
     );
+
+    // Then build each extra page, matching the home page's style.
+    if (homeHtml) {
+      for (const page of extraPages) {
+        setPages((prev) => ({ ...prev, [page]: "" }));
+        await generate(
+          `Create the "${page}" page for this site. Match the home page's style, fonts, colors, header, and nav exactly.${
+            page === "menu"
+              ? " Lay out the full menu using the items and prices the owner gave, grouped into clear sections with real headings. Prices right-aligned or clearly separated from item names. No invented items, no invented prices. If they did not give a price for something, leave the price off rather than guessing."
+              : ""
+          }${logoNote}`,
+          undefined,
+          page,
+        );
+      }
+      setCurrentPage("home");
+      setHtml(homeHtml);
+    }
   }
 
   function restyle(styleId: string) {
@@ -678,67 +839,177 @@ document.addEventListener("click", function (e) {
   // ---------- STEP 2: lypo interviews you ----------
   function nextQuestion() {
     const updated = [...answers];
-    updated[qIndex] = answerDraft.trim();
+    updated[qIndex] =
+      interview[qIndex]?.kind === "menu"
+        ? serializeMenu(menuRows)
+        : answerDraft.trim();
     setAnswers(updated);
     setAnswerDraft(updated[qIndex + 1] ?? "");
-    if (qIndex < INTERVIEW.length - 1) {
+    if (qIndex < interview.length - 1) {
       setQIndex(qIndex + 1);
     } else {
-      const combined = INTERVIEW.map(
-        (item, i) => `${item.q} ${updated[i]}`,
-      ).join(" ");
+      const combined = interview
+        .map((item, i) =>
+          item.kind === "menu"
+            ? `THE MENU (each line is "item | price", [brackets] are section headings, use these exactly and invent nothing):\n${updated[i] ?? ""}`
+            : `${item.q} ${updated[i] ?? ""}`,
+        )
+        .join("\n\n");
       setDescription(`${initialIdea ? initialIdea + ". " : ""}${combined}`);
       setStep("photos");
     }
   }
 
   if (step === "describe") {
-    const current = INTERVIEW[qIndex];
+    const current = interview[qIndex];
     return (
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
         <button
           type="button"
           onClick={() =>
-            qIndex === 0 ? setStep("vibe") : (setQIndex(qIndex - 1), setAnswerDraft(answers[qIndex - 1]))
+            qIndex === 0
+              ? setStep("vibe")
+              : (setQIndex(qIndex - 1), setAnswerDraft(answers[qIndex - 1] ?? ""))
           }
           className="self-start text-sm text-faint transition hover:text-flame"
         >
           ← back
         </button>
         <p className="mt-8 text-xs tracking-widest text-faint">
-          {qIndex + 1} / {INTERVIEW.length}
+          {qIndex + 1} / {interview.length}
         </p>
         <h2 className="font-display mt-2 text-3xl font-semibold tracking-tight">
           {current.q}
           <span className="text-flame">.</span>
         </h2>
         <p className="mt-2 text-sm text-ink-soft">{current.hint}</p>
-        <textarea
-          value={answerDraft}
-          onChange={(e) => setAnswerDraft(e.target.value)}
-          rows={4}
-          autoFocus
-          placeholder="type your answer — or tap the mic and talk…"
-          className="mt-6 w-full resize-y rounded-xl border border-line bg-paper p-4 text-sm leading-relaxed text-ink outline-none focus:border-flame"
-        />
-        <button
-          type="button"
-          onClick={() => dictate((t) => setAnswerDraft((prev) => prev + t))}
-          className={`mt-3 self-start rounded-full border px-4 py-2 text-sm font-medium transition ${
-            listening
-              ? "border-flame bg-flame text-paper"
-              : "border-line text-ink-soft hover:border-flame hover:text-flame"
-          }`}
-        >
-          {listening ? "listening — tap to stop" : "talk instead"}
-        </button>
+
+        {current.kind === "menu" ? (
+          <div className="mt-6">
+            <div className="space-y-2">
+              {menuRows.map((row, i) =>
+                row.kind === "section" ? (
+                  <div key={i} className="flex items-center gap-2 pt-3">
+                    <input
+                      value={row.label}
+                      onChange={(e) => updateRow(i, { label: e.target.value })}
+                      placeholder="section name (appetizers, plates, drinks)"
+                      aria-label={`Section ${i + 1} name`}
+                      className="font-display w-full border-b-2 border-ink bg-transparent py-1.5 text-sm font-semibold tracking-tight outline-none placeholder:font-normal placeholder:text-faint focus:border-flame"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMenuRows((prev) => prev.filter((_, x) => x !== i))
+                      }
+                      aria-label="Remove section"
+                      className="shrink-0 px-1 text-xs text-faint transition hover:text-flame"
+                    >
+                      remove
+                    </button>
+                  </div>
+                ) : (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      value={row.name}
+                      onChange={(e) => updateRow(i, { name: e.target.value })}
+                      placeholder="item name"
+                      aria-label={`Item ${i + 1} name`}
+                      className="w-full min-w-0 rounded-lg border border-line bg-paper px-3 py-2 text-sm outline-none placeholder:text-faint focus:border-flame"
+                    />
+                    <div className="flex w-28 shrink-0 items-center rounded-lg border border-line bg-paper px-2 focus-within:border-flame">
+                      <span className="text-sm text-faint">$</span>
+                      <input
+                        value={row.price}
+                        onChange={(e) => updateRow(i, { price: e.target.value })}
+                        placeholder="12"
+                        inputMode="decimal"
+                        aria-label={`Item ${i + 1} price`}
+                        className="w-full min-w-0 bg-transparent py-2 pl-1 text-sm outline-none placeholder:text-faint"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMenuRows((prev) => prev.filter((_, x) => x !== i))
+                      }
+                      aria-label="Remove item"
+                      className="shrink-0 px-1 text-xs text-faint transition hover:text-flame"
+                    >
+                      remove
+                    </button>
+                  </div>
+                ),
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setMenuRows((prev) => [
+                    ...prev,
+                    { kind: "item", name: "", price: "" },
+                  ])
+                }
+                className="rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame"
+              >
+                + add item
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setMenuRows((prev) => [
+                    ...prev,
+                    { kind: "section", label: "" },
+                    { kind: "item", name: "", price: "" },
+                  ])
+                }
+                className="rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame"
+              >
+                + add section
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-faint">
+              Leave a price blank if it changes. We&apos;ll show the item
+              without one instead of making a number up.
+            </p>
+          </div>
+        ) : (
+          <>
+            <textarea
+              value={answerDraft}
+              onChange={(e) => setAnswerDraft(e.target.value)}
+              rows={current.long ? 10 : 4}
+              autoFocus
+              placeholder="type your answer, or tap the mic and talk…"
+              className="mt-6 w-full resize-y rounded-xl border border-line bg-paper p-4 text-sm leading-relaxed text-ink outline-none focus:border-flame"
+            />
+            <button
+              type="button"
+              onClick={() => dictate((t) => setAnswerDraft((prev) => prev + t))}
+              className={`mt-3 self-start rounded-full border px-4 py-2 text-sm font-medium transition ${
+                listening
+                  ? "border-flame bg-flame text-paper"
+                  : "border-line text-ink-soft hover:border-flame hover:text-flame"
+              }`}
+            >
+              {listening ? "listening, tap to stop" : "talk instead"}
+            </button>
+          </>
+        )}
+
         <button
           type="button"
           onClick={nextQuestion}
-          disabled={!answerDraft.trim()}
+          disabled={
+            current.kind === "menu"
+              ? filledMenu.filter((r) => r.kind === "item").length === 0
+              : !answerDraft.trim()
+          }
           className="mt-6 self-start rounded-full bg-flame px-8 py-3 font-display font-semibold text-paper transition hover:bg-flame-bright disabled:opacity-40"
         >
-          {qIndex < INTERVIEW.length - 1 ? "next →" : "almost done →"}
+          {qIndex < interview.length - 1 ? "next →" : "almost done →"}
         </button>
       </div>
     );
@@ -756,12 +1027,52 @@ document.addEventListener("click", function (e) {
           ← back
         </button>
         <h2 className="font-display mt-8 text-3xl font-semibold tracking-tight">
-          add photos<span className="text-flame">?</span>
+          add your logo and photos<span className="text-flame">?</span>
         </h2>
         <p className="mt-2 text-sm text-ink-soft">
-          Optional — your own photos make it feel real. Skip if you want.
+          Optional, but your own logo and photos are what make it look like
+          yours instead of a template.
         </p>
-        <label className="mt-6 inline-block w-fit cursor-pointer rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame">
+
+        {/* logo: goes in the header on every page */}
+        <p className="mt-8 text-sm font-medium">
+          logo <span className="text-faint">(goes in your header)</span>
+        </p>
+        <div className="mt-2 flex items-center gap-3">
+          <label className="inline-block w-fit cursor-pointer rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame">
+            {logoBusy ? "uploading…" : logo ? "replace logo" : "+ add logo"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={logoBusy}
+              onChange={(e) => uploadLogo(e.target.files)}
+            />
+          </label>
+          {logo && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={logo}
+                alt="Your logo"
+                className="h-12 w-12 rounded-lg border border-line bg-paper object-contain p-1"
+              />
+              <button
+                type="button"
+                onClick={() => setLogo(null)}
+                className="text-xs text-faint transition hover:text-flame"
+              >
+                remove
+              </button>
+            </>
+          )}
+        </div>
+
+        <p className="mt-6 text-sm font-medium">
+          photos{" "}
+          <span className="text-faint">(food, the space, your team)</span>
+        </p>
+        <label className="mt-2 inline-block w-fit cursor-pointer rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame">
           {uploading ? "uploading…" : "+ add photos"}
           <input
             type="file"
@@ -784,11 +1095,17 @@ document.addEventListener("click", function (e) {
         <button
           type="button"
           onClick={startBuild}
-          disabled={uploading}
+          disabled={uploading || logoBusy}
           className="mt-8 self-start rounded-full bg-flame px-8 py-3 font-display font-semibold text-paper transition hover:bg-flame-bright disabled:opacity-40"
         >
           build it →
         </button>
+        {(MULTI_PAGE_PURPOSES[siteType ?? ""] ?? []).length > 0 && (
+          <p className="mt-3 text-xs text-faint">
+            Building your home page and menu page. Takes a little longer than
+            one page.
+          </p>
+        )}
       </div>
     );
   }
