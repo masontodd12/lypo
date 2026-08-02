@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { INTERVIEWS, INTERVIEW, type Question } from "@/lib/interviews";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -20,14 +21,6 @@ const STYLES = [
 ];
 
 
-
-type Question = {
-  q: string;
-  hint: string;
-  long?: boolean;
-  /** "menu" swaps the textarea for a structured item + price list. */
-  kind?: "menu";
-};
 
 // A menu is either a section heading or an item with a price.
 type MenuRow =
@@ -132,53 +125,27 @@ export function parseMenuText(raw: string): MenuRow[] {
   });
 }
 
-const INTERVIEW: Question[] = [
-  { q: "what's it called?", hint: "The name of your site, business, group, or idea." },
-  { q: "who is it for?", hint: "Who should visit this: customers, neighbors, friends, donors?" },
-  { q: "what should it say?", hint: "The main message, story, or info visitors need to know." },
-  { q: "what should visitors do?", hint: "Sign up? Donate? Contact you? Browse your work?" },
-  { q: "anything else?", hint: "Colors you love, sections you want, vibes, details, anything." },
-];
-
-// Purpose-specific interviews. A restaurant needs different questions than a
-// portfolio, and asking the right ones is most of what makes the site good.
-const RESTAURANT_INTERVIEW: Question[] = [
-  {
-    q: "what is the restaurant called",
-    hint: "Exactly how you want it written on the sign.",
-  },
-  {
-    q: "what kind of food do you serve",
-    hint: "However you would describe it to a customer. Soul food, tacos, wings, Caribbean, coffee and pastries.",
-  },
-  {
-    q: "tell us your story",
-    hint: "How did it start, who is behind it, and what makes it yours? This becomes the main section of your home page, so real details work better than a slogan.",
-    long: true,
-  },
-  {
-    q: "when are you open",
-    hint: "Days and hours. Include anything unusual, like closed Mondays or a different Saturday schedule.",
-  },
-  {
-    q: "where are you located",
-    hint: "Full street address. We turn it into a map link customers can open on their phone.",
-  },
-  {
-    q: "what number should customers call",
-    hint: "For orders or reservations. We make it tap-to-call on phones.",
-  },
-  {
-    q: "your menu",
-    hint: "Add each item and what it costs. Group them into sections like appetizers, plates, or drinks.",
-    kind: "menu",
-  },
-];
-
-const INTERVIEWS: Record<string, Question[]> = {
-  restaurant: RESTAURANT_INTERVIEW,
-  foodtruck: RESTAURANT_INTERVIEW,
-};
+// The reverse of serializeMenu. The paste-everything extractor returns the
+// menu in the same "item | price" text form, so this turns it back into rows
+// the owner can edit in the grid.
+export function deserializeMenu(text: string): MenuRow[] {
+  return text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line): MenuRow => {
+      const section = line.match(/^\[(.*)\]$/);
+      if (section) return { kind: "section", label: section[1].trim() };
+      const [name, ...rest] = line.split("|");
+      const price = rest.join("|").trim();
+      return {
+        kind: "item",
+        name: name.trim(),
+        price: /no price given/i.test(price) ? "" : price.replace(/^\$/, ""),
+      };
+    })
+    .filter((r) => (r.kind === "item" ? r.name !== "" : r.label !== ""));
+}
 
 // Purpose modes: each maps to a server-side block in /api/generate that
 // pre-loads the sections this kind of site actually needs.
@@ -226,7 +193,15 @@ export function BuilderChat({
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"preview" | "code">("preview");
   const [step, setStep] = useState<
-    "setup" | "type" | "vibe" | "describe" | "photos" | "build"
+    | "setup"
+    | "type"
+    | "vibe"
+    | "how"
+    | "paste"
+    | "review"
+    | "describe"
+    | "photos"
+    | "build"
   >(initialHtml ? "build" : "setup");
   const [siteType, setSiteType] = useState<string | null>(null);
   const [projectName, setProjectName] = useState(
@@ -247,6 +222,14 @@ export function BuilderChat({
   const [pasting, setPasting] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pasteNote, setPasteNote] = useState("");
+
+  // ---- paste-everything path ----
+  const [dump, setDump] = useState("");
+  const [dumpBusy, setDumpBusy] = useState(false);
+  const [dumpError, setDumpError] = useState("");
+  const [guessed, setGuessed] = useState<number[]>([]);
+  const [leftover, setLeftover] = useState("");
+  const [reviewIndex, setReviewIndex] = useState<number | null>(null);
 
   function applyPastedMenu() {
     const parsed = parseMenuText(pasteText);
@@ -954,7 +937,7 @@ document.addEventListener("click", function (e) {
               type="button"
               onClick={() => {
                 setVibe(style.id);
-                setStep("describe");
+                setStep("how");
               }}
               className="group rounded-xl border border-line bg-paper p-5 text-left transition hover:border-flame"
             >
@@ -993,6 +976,26 @@ document.addEventListener("click", function (e) {
   }
 
   // ---------- STEP 2: lypo interviews you ----------
+
+  // Both paths end here: the one-at-a-time interview and the paste-everything
+  // review. Anything blank is left out rather than sent as an empty question,
+  // so the generator never sees "when are you open" with nothing after it.
+  function finishInterview(final: string[], extra = "") {
+    const combined = interview
+      .map((item, i) => {
+        const answer = (final[i] ?? "").trim();
+        if (!answer) return "";
+        return item.kind === "menu"
+          ? `THE MENU (each line is "item | price", [brackets] are section headings, use these exactly and invent nothing):\n${answer}`
+          : `${item.q} ${answer}`;
+      })
+      .filter(Boolean)
+      .join("\n\n");
+    const tail = extra.trim() ? `\n\nalso worth knowing: ${extra.trim()}` : "";
+    setDescription(`${initialIdea ? initialIdea + ". " : ""}${combined}${tail}`);
+    setStep("photos");
+  }
+
   function nextQuestion() {
     const updated = [...answers];
     updated[qIndex] =
@@ -1000,20 +1003,330 @@ document.addEventListener("click", function (e) {
         ? serializeMenu(menuRows)
         : answerDraft.trim();
     setAnswers(updated);
+
+    // Jumped in from the review screen to fix one answer. Go back there.
+    if (reviewIndex !== null) {
+      setReviewIndex(null);
+      setStep("review");
+      return;
+    }
+
     setAnswerDraft(updated[qIndex + 1] ?? "");
     if (qIndex < interview.length - 1) {
       setQIndex(qIndex + 1);
     } else {
-      const combined = interview
-        .map((item, i) =>
-          item.kind === "menu"
-            ? `THE MENU (each line is "item | price", [brackets] are section headings, use these exactly and invent nothing):\n${updated[i] ?? ""}`
-            : `${item.q} ${updated[i] ?? ""}`,
-        )
-        .join("\n\n");
-      setDescription(`${initialIdea ? initialIdea + ". " : ""}${combined}`);
-      setStep("photos");
+      finishInterview(updated);
     }
+  }
+
+  function editAnswer(i: number) {
+    setReviewIndex(i);
+    setQIndex(i);
+    setAnswerDraft(answers[i] ?? "");
+    setStep("describe");
+  }
+
+  // Read the pasted blob into the same answer slots the interview would fill.
+  async function readDump() {
+    const text = dump.trim();
+    if (text.length < 40 || dumpBusy) return;
+    setDumpBusy(true);
+    setDumpError("");
+    try {
+      const res = await fetch("/api/parse-intake", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text, purpose: siteType ?? undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDumpError(data.error ?? "Couldn't read that. Try again.");
+        return;
+      }
+      const next: string[] = data.answers ?? [];
+      setAnswers(next);
+      setGuessed(data.guessed ?? []);
+      setLeftover(data.leftover ?? "");
+
+      const menuAt = interview.findIndex((item) => item.kind === "menu");
+      if (menuAt >= 0 && next[menuAt]) {
+        const rows = deserializeMenu(next[menuAt]);
+        if (rows.length > 0) setMenuRows(rows);
+      }
+
+      setReviewIndex(null);
+      setStep("review");
+    } catch {
+      setDumpError("Couldn't reach the server. Check your connection.");
+    } finally {
+      setDumpBusy(false);
+    }
+  }
+
+  // ---------- STEP 1.5: questions, or paste it all ----------
+  if (step === "how") {
+    return (
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
+        <button
+          type="button"
+          onClick={() => setStep("vibe")}
+          className="self-start text-sm text-faint transition hover:text-flame"
+        >
+          ← back
+        </button>
+        <h2 className="font-display mt-8 text-3xl font-semibold tracking-tight">
+          how do you want to do this<span className="text-flame">?</span>
+        </h2>
+        <p className="mt-2 text-sm text-ink-soft">
+          Same site either way. Pick whichever matches what you already have.
+        </p>
+
+        <div className="mt-6 grid gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              setQIndex(0);
+              setAnswerDraft(answers[0] ?? "");
+              setStep("describe");
+            }}
+            className="rounded-xl border border-line bg-paper p-5 text-left transition hover:border-flame"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="font-display font-semibold">
+                answer {interview.length} questions
+                <span className="text-flame">.</span>
+              </p>
+              <span className="shrink-0 text-xs text-faint">a few minutes</span>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+              One at a time, with a hint on each. Best if you are still working
+              out what the site should say.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setDumpError("");
+              setStep("paste");
+            }}
+            className="rounded-xl border border-line bg-paper p-5 text-left transition hover:border-flame"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="font-display font-semibold">
+                paste everything at once
+                <span className="text-flame">.</span>
+              </p>
+              <span className="shrink-0 text-xs text-faint">about a minute</span>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+              Drop in your bio, your menu, an old About page, notes off your
+              phone. We sort it into the answers and show you what we got.
+            </p>
+          </button>
+        </div>
+
+        <p className="mt-6 text-xs text-faint">
+          Either way you get to check and fix everything before it builds.
+        </p>
+      </div>
+    );
+  }
+
+  // ---------- STEP 1.6: the paste box ----------
+  if (step === "paste") {
+    const dumpLength = dump.trim().length;
+    return (
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
+        <button
+          type="button"
+          onClick={() => setStep("how")}
+          className="self-start text-sm text-faint transition hover:text-flame"
+        >
+          ← back
+        </button>
+        <h2 className="font-display mt-8 text-3xl font-semibold tracking-tight">
+          tell us everything<span className="text-flame">.</span>
+        </h2>
+        <p className="mt-2 text-sm text-ink-soft">
+          Paste whatever you already have written down. It does not need to be
+          organized and it does not need to be neat. We pull out what matters.
+        </p>
+
+        <ul className="mt-4 space-y-1 text-xs text-faint">
+          {interview.map((item) => (
+            <li key={item.q}>{item.q.replace(/\?$/, "")}</li>
+          ))}
+        </ul>
+
+        <textarea
+          value={dump}
+          onChange={(e) => setDump(e.target.value)}
+          rows={12}
+          autoFocus
+          aria-label="Everything about your business"
+          placeholder={
+            "Paste your Instagram bio, your menu, an old About page, notes from your phone. All of it, in any order."
+          }
+          className="mt-5 w-full resize-y rounded-xl border border-line bg-paper p-4 text-sm leading-relaxed text-ink outline-none focus:border-flame"
+        />
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => dictate((t) => setDump((prev) => prev + t))}
+            className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+              listening
+                ? "border-flame bg-flame text-paper"
+                : "border-line text-ink-soft hover:border-flame hover:text-flame"
+            }`}
+          >
+            {listening ? "listening, tap to stop" : "talk instead"}
+          </button>
+          <span className="text-xs text-faint">
+            {dumpLength > 0 && dumpLength < 40
+              ? "keep going"
+              : dumpLength > 0
+                ? `${dumpLength.toLocaleString()} characters`
+                : ""}
+          </span>
+        </div>
+
+        {dumpError && <p className="mt-4 text-sm text-flame">{dumpError}</p>}
+
+        <button
+          type="button"
+          onClick={readDump}
+          disabled={dumpLength < 40 || dumpBusy}
+          className="mt-6 self-start rounded-full bg-flame px-8 py-3 font-display font-semibold text-paper transition hover:bg-flame-bright disabled:opacity-40"
+        >
+          {dumpBusy ? "reading…" : "next →"}
+        </button>
+        <p className="mt-3 text-xs text-faint">
+          Nothing gets built yet. You check it on the next screen.
+        </p>
+      </div>
+    );
+  }
+
+  // ---------- STEP 1.7: check what we pulled out ----------
+  if (step === "review") {
+    const filled = answers.filter((a) => a?.trim()).length;
+    const menuAt = interview.findIndex((item) => item.kind === "menu");
+    const menuItems = filledMenu.filter((r) => r.kind === "item").length;
+
+    return (
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col overflow-y-auto p-8">
+        <button
+          type="button"
+          onClick={() => setStep("paste")}
+          className="self-start text-sm text-faint transition hover:text-flame"
+        >
+          ← back
+        </button>
+        <h2 className="font-display mt-6 text-3xl font-semibold tracking-tight">
+          here is what we got<span className="text-flame">.</span>
+        </h2>
+        <p className="mt-2 text-sm text-ink-soft">
+          {filled} of {interview.length} answered. Fix anything wrong and fill
+          in what you want. Blanks are fine, we leave those sections off instead
+          of making something up.
+        </p>
+
+        <div className="mt-6 space-y-5">
+          {interview.map((item, i) => {
+            const answer = answers[i] ?? "";
+            const isMenu = item.kind === "menu";
+            const wasGuessed = guessed.includes(i);
+
+            return (
+              <div key={item.q}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="font-display text-sm font-semibold tracking-tight">
+                    {item.q.replace(/\?$/, "")}
+                  </p>
+                  {wasGuessed ? (
+                    <span className="shrink-0 text-xs text-flame">
+                      we guessed this
+                    </span>
+                  ) : !answer.trim() ? (
+                    <span className="shrink-0 text-xs text-faint">
+                      not in what you pasted
+                    </span>
+                  ) : null}
+                </div>
+
+                {isMenu ? (
+                  <div className="mt-2 flex items-center gap-3 rounded-lg border border-line bg-paper px-3 py-2.5">
+                    <p className="text-sm text-ink-soft">
+                      {menuItems > 0
+                        ? `${menuItems} item${menuItems === 1 ? "" : "s"} found`
+                        : "no menu items found"}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => editAnswer(i)}
+                      className="ml-auto shrink-0 text-xs font-medium text-flame hover:underline"
+                    >
+                      {menuItems > 0 ? "check the menu →" : "add your menu →"}
+                    </button>
+                  </div>
+                ) : (
+                  <textarea
+                    value={answer}
+                    onChange={(e) =>
+                      setAnswers((prev) => {
+                        const next = [...prev];
+                        next[i] = e.target.value;
+                        return next;
+                      })
+                    }
+                    rows={item.long ? 6 : 2}
+                    placeholder={item.hint}
+                    aria-label={item.q}
+                    className="mt-2 w-full resize-y rounded-lg border border-line bg-paper p-3 text-sm leading-relaxed outline-none placeholder:text-faint focus:border-flame"
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {leftover && (
+          <div className="mt-5">
+            <p className="font-display text-sm font-semibold tracking-tight">
+              other things you mentioned
+            </p>
+            <textarea
+              value={leftover}
+              onChange={(e) => setLeftover(e.target.value)}
+              rows={3}
+              aria-label="Other things you mentioned"
+              className="mt-2 w-full resize-y rounded-lg border border-line bg-paper p-3 text-sm leading-relaxed outline-none focus:border-flame"
+            />
+            <p className="mt-1 text-xs text-faint">
+              Delete anything you do not want on the site.
+            </p>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => {
+            const final = [...answers];
+            if (menuAt >= 0) final[menuAt] = serializeMenu(menuRows);
+            finishInterview(final, leftover);
+          }}
+          disabled={filled === 0}
+          className="mt-8 self-start rounded-full bg-flame px-8 py-3 font-display font-semibold text-paper transition hover:bg-flame-bright disabled:opacity-40"
+        >
+          looks right →
+        </button>
+        <p className="mt-3 pb-4 text-xs text-faint">
+          You can change any of this after it builds, too.
+        </p>
+      </div>
+    );
   }
 
   if (step === "describe") {
@@ -1022,17 +1335,25 @@ document.addEventListener("click", function (e) {
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
         <button
           type="button"
-          onClick={() =>
-            qIndex === 0
-              ? setStep("vibe")
-              : (setQIndex(qIndex - 1), setAnswerDraft(answers[qIndex - 1] ?? ""))
-          }
+          onClick={() => {
+            if (reviewIndex !== null) {
+              setReviewIndex(null);
+              setStep("review");
+            } else if (qIndex === 0) {
+              setStep("how");
+            } else {
+              setQIndex(qIndex - 1);
+              setAnswerDraft(answers[qIndex - 1] ?? "");
+            }
+          }}
           className="self-start text-sm text-faint transition hover:text-flame"
         >
           ← back
         </button>
         <p className="mt-8 text-xs tracking-widest text-faint">
-          {qIndex + 1} / {interview.length}
+          {reviewIndex !== null
+            ? "fixing one answer"
+            : `${qIndex + 1} / ${interview.length}`}
         </p>
         <h2 className="font-display mt-2 text-3xl font-semibold tracking-tight">
           {current.q}
@@ -1248,7 +1569,11 @@ document.addEventListener("click", function (e) {
           }
           className="mt-6 self-start rounded-full bg-flame px-8 py-3 font-display font-semibold text-paper transition hover:bg-flame-bright disabled:opacity-40"
         >
-          {qIndex < interview.length - 1 ? "next →" : "almost done →"}
+          {reviewIndex !== null
+            ? "save and go back →"
+            : qIndex < interview.length - 1
+              ? "next →"
+              : "almost done →"}
         </button>
       </div>
     );
@@ -1260,7 +1585,7 @@ document.addEventListener("click", function (e) {
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
         <button
           type="button"
-          onClick={() => setStep("describe")}
+          onClick={() => setStep(dump.trim() ? "review" : "describe")}
           className="self-start text-sm text-faint transition hover:text-flame"
         >
           ← back
