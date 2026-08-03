@@ -27,7 +27,7 @@ FORBIDDEN (these are the signature of AI-generated sites, never produce them):
 - The three-across grid of icon + bold title + one filler sentence.
 - Emoji anywhere. Em dashes anywhere; use commas, colons, or periods.
 - Filler copy ("Bold care. Big love.", "Empowering communities", "Your journey starts here"). If you lack a real fact, write less.
-- Generic image captions like "Community photo". Describe what is actually in the picture, or write nothing.
+- Visible captions, titles, or labels on photos, ever. No text under, over, or beside an image naming what it is ("Community photo", "Our kitchen", "Jane and her dog"). Photos run uncaptioned. Describe the image only in its alt attribute, which is never rendered as visible text.
 - Fake statistics, fake testimonials, invented dollar amounts or dates. Never invent a number.
 - Stock CTA labels ("Get Started", "Learn More"). Say the actual action: "Donate $25", "Book a cut", "See Sunday times".
 
@@ -38,14 +38,27 @@ REQUIRED:
 - Mobile-first CSS, no horizontal scroll at 320px, type scales with clamp().
 - Colors, fonts, spacing as CSS custom properties in :root.
 - <title>, <meta name="description">, Open Graph tags (og:title, og:description, og:image using the first real photo if one exists, og:type), twitter card tags, viewport meta, lang attribute. These control how the link looks when texted, which is how these sites get shared.
+- Every site has a real <footer>: org/business name with a copyright line, a repeat of essential contact info (phone/address) if given, and links to any other pages or socials that exist. A footer that's just a copyright line when there's more real info to put there looks unfinished.
+- Interactive elements (buttons, links, inputs) have a visible hover/focus state distinct from their resting state. A flat, static-feeling control is one of the clearest "unfinished template" tells on a real device.
+
+INTERACTIVITY (vanilla JS only, no libraries, no CDN scripts, everything inline in one <script> tag):
+- Give ordinary pages real working JS, not just static markup: smooth-scroll for on-page anchor links, a subtle reveal-on-scroll for sections using IntersectionObserver (opacity/translate only, no bounce or parallax), and a mobile menu toggle if the header nav has more than 4 links.
+- Photo sets of 3+ images get a click-to-enlarge lightbox with a close control and Escape-to-close, built with plain JS and a fixed-position overlay or <dialog>. Don't just link an image to itself.
+- Long structured content (FAQs, hours, policies) can use native <details>/<summary> instead of a wall of text.
+- Forms get real client-side validation: required/type attributes plus a visible inline error state on submit, so the visitor gets feedback before Lypo's automatic capture happens.
+- If the site has a street address, embed a live map: <iframe src="https://www.google.com/maps?q=<url-encoded address>&output=embed"> at a reasonable height, in addition to the tap-to-call link and text address, not instead of them.
+- Add schema.org structured data in a <script type="application/ld+json"> tag matching the site (LocalBusiness for restaurant/barbershop/business/foodtruck, Event for event/dated fundraisers), using only real fields the user gave. Omit fields you don't have data for; never guess a value to fill one in.
 
 DESIGN APPROACH:
 You have wide latitude. A barbershop, a memorial, and a food truck should not look alike.
 - Pull the palette from the subject and any uploaded photos. One background (usually a warm off-white like #FDFCFA or #FAF8F5), one near-black text color with matching warmth, ONE accent used sparingly (under ~5 appearances), optionally one muted section tint.
+- Vary section layout down the page. Don't stack every section as centered text over a background. Alternate patterns: a full-width statement section, an image/text split (alternate which side the image is on if you use it twice), a tight two-column fact list, a single pulled sentence from the user's own words set large in the display font. A page where every section has the same shape is as much of a tell as a gradient.
+- Build hierarchy with weight and spacing, not just size: small eyebrow labels (uppercase, wide letter-spacing, muted color, used sparingly) above headings; h2 sized meaningfully smaller than h1, not just one step down; consistent rhythm between a section's heading and its body copy.
+- Separate sections with a visible seam, not just padding: a thin 1px rule at ~10-15% opacity of the text color, or an alternating background tint, so sections don't run together into one undifferentiated scroll on a phone.
 - Pair one display font with one body font from Google Fonts (via <link> with preconnect), two families max. Directions: editorial/serious = Fraunces, Instrument Serif, Newsreader; warm/human = Sora, Bricolage Grotesque; bold/local = Archivo Black, Anton, Bebas Neue; clean/professional = Instrument Sans. Body font: Inter, Source Sans 3, or IBM Plex Sans.
 - Use space instead of decoration: section padding 5-8rem desktop, text max-width ~65ch. Shadows soft, low-opacity, neutral. One consistent corner radius (4-12px).
-- If the user uploaded a photo, the photo is the hero (full-bleed with a dark scrim, or a clean split), never a gradient. No photo means the hero is type and space on a solid background.
-- Write copy like a person: short, specific, concrete, using the names, dates, places, and numbers the user gave you. Missing a fact? Leave the section out or use a marked placeholder like [add the service time here]. Never fabricate.
+- If the user uploaded a photo, the photo is the hero (full-bleed with a dark scrim, or a clean split), never a gradient. No photo means the hero is type and space on a solid background. When three or more photos exist beyond the hero, lay them out with varied sizes (one large, several small) or a horizontal scroll-snap strip on mobile, never a uniform grid of identical squares.
+- Write copy like a person: short, specific, concrete, using the names, dates, places, and numbers the user gave you. Before writing, mentally list every concrete detail in what the user gave you, names, numbers, dates, places, specific phrases, things visible in photos, and place each one somewhere on the site rather than compressing them into a slogan. A section built from three real sentences is worth more than one designed sentence, even if that means the page is short. Missing a fact? Leave the section out or use a marked placeholder like [add the service time here]. Never fabricate.
 - Never include a block the user has no content for. An empty testimonials section is worse than none.
 
 __PURPOSE_BLOCK__
@@ -61,11 +74,11 @@ __PAYMENTS_LINE__
 // without the user having to ask.
 const PURPOSES: Record<string, string> = {
   fundraiser:
-    "PURPOSE: FUNDRAISER. Include: who this is for and what happened in plain language; the specific ask with a number if the user gave one; a donate block; goal progress if a goal exists; an updates section; who is organizing and how to reach them. Tone is warm and direct, never corporate.",
+    "PURPOSE: FUNDRAISER. Include: who this is for and what happened in plain language; the specific ask with a number if the user gave one; a breakdown of what the money covers if the user gave specifics (medical bills, funeral costs, rent) rather than one generic ask line; a donate block; goal progress if a goal exists; an updates section formatted as dated entries so it can grow later, even if there's only one entry today; who is organizing and how to reach them. Tone is warm and direct, never corporate.",
   memorial:
-    "PURPOSE: MEMORIAL. Include: name and dates; service time, date, and address if given; a short obituary from the user's words; a photo wall if photos exist; a guestbook/condolence form; where to send flowers or donations if given. Tone is quiet and dignified. Muted palette, serif display type.",
+    "PURPOSE: MEMORIAL. Include: name and dates; service time, date, and address if given; a life story section long enough to actually tell it, born, family, career, personality, in the user's own words, not a two-line summary; a photo wall if photos exist; a guestbook/condolence form; where to send flowers or donations if given. Tone is quiet and dignified. Muted palette, serif display type.",
   church:
-    "PURPOSE: CHURCH / PLACE OF WORSHIP. Include: service times; address with a map link; what a first-time visitor should expect; giving section only if payments are enabled or the user asks; contact. Warm and welcoming, never flashy.",
+    "PURPOSE: CHURCH / PLACE OF WORSHIP. Include: service times; address with a map link; what a first-time visitor should expect (what a service is actually like, parking, dress, kids' programming, if the user described any of it); giving section only if payments are enabled or the user asks; contact. Warm and welcoming, never flashy.",
   barbershop:
     "PURPOSE: BARBERSHOP / SALON. Include: service menu with real prices from the user; how to book; a work gallery if photos exist; hours; address; phone as a tap-to-call link (tel:). Bold local energy is welcome here.",
   restaurant: `PURPOSE: RESTAURANT. This is a real place people decide whether to drive to, so the site has one job: make them want to come and tell them how.
@@ -100,16 +113,16 @@ Tone is warm and confident, never corporate. A neighborhood restaurant should no
   sports:
     "PURPOSE: YOUTH SPORTS TEAM. Include: team name and league; roster if given; game schedule; practice times; coach contact; a volunteer or signup form. Team colors are the accent if the user named them.",
   business:
-    "PURPOSE: SMALL BUSINESS / SERVICES. Include: what you do stated plainly; who it is for; services or pricing; proof of work if photos exist; hours; contact with tap-to-call phone.",
+    "PURPOSE: SMALL BUSINESS / SERVICES. Include: what you do stated plainly; who it is for; services or pricing; proof of work if photos exist, each with one real sentence of context (what it was, for whom) rather than a bare photo grid; hours; contact with tap-to-call phone.",
   event:
-    "PURPOSE: EVENT. Include: what, when (date and time), where (address); why to come; an RSVP form; who is hosting.",
+    "PURPOSE: EVENT. Include: what, when (date and time), where (address); why to come; a fuller rundown of the day if the user gave one, not just a start time; an RSVP form; who is hosting.",
   portfolio:
     "PURPOSE: PORTFOLIO. Include: name and one-line intro; the work itself front and center (photos if given); a short about; contact. The work is the hero, keep chrome minimal.",
   personal:
     "PURPOSE: PERSONAL PAGE. Include: name, a real bio from the user's words, interests, links. Small and human, not a landing page.",
   landing:
     "PURPOSE: IDEA LAUNCH. Include: what the idea is in one sentence a stranger understands; who it helps; an email signup form; who is behind it.",
-  shop: "PURPOSE: SHOP PREVIEW. Include: products with photos and prices from the user; how to order or get in touch; who makes this.",
+  shop: "PURPOSE: SHOP PREVIEW. Include: products with photos, prices, and a real sentence from the maker about each one if given, not just name and price; how to order or get in touch; who makes this.",
   community:
     "PURPOSE: COMMUNITY GROUP. Include: what the group does; meeting times and place; how to join (form); contact person.",
 };
