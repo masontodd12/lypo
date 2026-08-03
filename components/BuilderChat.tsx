@@ -751,7 +751,6 @@ document.addEventListener("click", function (e) {
     // Then build each extra page, matching the home page's style.
     if (homeHtml) {
       for (const page of extraPages) {
-        setPages((prev) => ({ ...prev, [page]: "" }));
         await generate(
           `Create the "${page}" page for this site. Match the home page's style, fonts, colors, header, and nav exactly.${
             page === "menu"
@@ -1758,9 +1757,9 @@ document.addEventListener("click", function (e) {
 
   // ---------- STEP 3: the builder ----------
   return (
-    <div className="flex flex-1 overflow-hidden">
-      <aside className="flex w-[36%] max-w-md flex-col border-r border-line p-5">
-        <div className="flex-1 space-y-3 overflow-y-auto text-sm">
+    <div className="flex flex-1 min-h-0 overflow-hidden">
+      <aside className="flex w-[36%] max-w-md min-h-0 flex-col border-r border-line p-5">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto text-sm">
           {messages.map((m, i) =>
             m.role === "user" ? (
               <div key={i} className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-mist px-4 py-2.5">
@@ -1977,7 +1976,7 @@ document.addEventListener("click", function (e) {
         </form>
       </aside>
 
-      <section className="flex flex-1 flex-col bg-mist/60">
+      <section className="flex flex-1 min-h-0 flex-col bg-mist/60">
         <div className="flex items-center gap-1 border-b border-line px-4 py-2">
           {(["preview", "code"] as const).map((t) => (
             <button
@@ -2018,7 +2017,7 @@ document.addEventListener("click", function (e) {
             )}
           </div>
         </div>
-        <div className="flex-1 p-4">
+        <div className="min-h-0 flex-1 p-4">
           {tab === "preview" ? (
             html || multiPage ? (
               <>
