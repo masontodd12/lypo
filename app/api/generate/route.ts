@@ -271,7 +271,7 @@ export async function POST(request: Request) {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_completion_tokens: 8000,
+      max_completion_tokens: 16000,
       messages: [
         { role: "system", content: finalPrompt },
         ...claudeMessages,
@@ -292,6 +292,13 @@ export async function POST(request: Request) {
   const raw: string = (data.choices?.[0]?.message?.content ?? "").trim();
 
   if (!raw) {
+    console.error(
+      "OpenAI returned empty content:",
+      JSON.stringify({
+        finish_reason: data.choices?.[0]?.finish_reason,
+        usage: data.usage,
+      }),
+    );
     return NextResponse.json(
       { error: "Generation came back empty. Try again." },
       { status: 502 },
