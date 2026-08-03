@@ -36,7 +36,7 @@ export default async function Builder({
   const stripeConnected = !!stripeAccount?.account_id;
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden">
+    <main className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-line px-6 py-4">
         <div className="flex items-center gap-5">
           <Link
