@@ -6,8 +6,11 @@ export type Question = {
   q: string;
   hint: string;
   long?: boolean;
-  /** "menu" swaps the textarea for a structured item + price list. */
-  kind?: "menu";
+  /**
+   * "menu" swaps the textarea for a structured item + price list.
+   * "hours" swaps it for a day-by-day open/close time list.
+   */
+  kind?: "menu" | "hours";
 };
 
 export const INTERVIEW: Question[] = [
@@ -36,7 +39,8 @@ export const RESTAURANT_INTERVIEW: Question[] = [
   },
   {
     q: "when are you open",
-    hint: "Days and hours. Include anything unusual, like closed Mondays or a different Saturday schedule.",
+    hint: "Set your hours for each day. Leave a day blank if you are not sure yet.",
+    kind: "hours",
   },
   {
     q: "where are you located",

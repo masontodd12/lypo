@@ -13,7 +13,9 @@ function buildPrompt(interview: Question[]): string {
       const format =
         item.kind === "menu"
           ? `\n   FORMAT: one item per line as "item name | $price". Put section headings on their own line in square brackets, like [Plates]. If they gave no price for an item, write "item name | NO PRICE GIVEN". Never invent a price and never invent an item.`
-          : "";
+          : item.kind === "hours"
+            ? `\n   FORMAT: one line per day of the week you have real hours for, exactly as "Monday: 11:00 AM - 7:00 PM" (use "Closed" in place of times for a day stated as closed). Only include a day if the text actually says something about it. Never invent hours for a day it does not mention.`
+            : "";
       return `${i + 1}. ${item.q}\n   (${item.hint})${format}`;
     })
     .join("\n\n");

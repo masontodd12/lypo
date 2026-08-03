@@ -147,6 +147,77 @@ export function deserializeMenu(text: string): MenuRow[] {
     .filter((r) => (r.kind === "item" ? r.name !== "" : r.label !== ""));
 }
 
+// ---- manual hours entry --------------------------------------------------
+const DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+] as const;
+
+type HourRow = { day: (typeof DAYS)[number]; open: string; close: string; closed: boolean };
+
+function emptyHours(): HourRow[] {
+  return DAYS.map((day) => ({ day, open: "", close: "", closed: false }));
+}
+
+// <input type="time"> speaks 24-hour "HH:MM"; a customer reading the site
+// wants "11:00 AM", so convert on the way out and back on the way in.
+function to12h(v: string): string {
+  const m = v.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return v;
+  const h = Number(m[1]);
+  const suffix = h < 12 ? "AM" : "PM";
+  const hour = h % 12 === 0 ? 12 : h % 12;
+  return `${hour}:${m[2]} ${suffix}`;
+}
+
+function to24h(v: string): string {
+  const m = v.match(/^(\d{1,2})(?::(\d{2}))?\s*([AaPp])\.?[Mm]\.?$/);
+  if (!m) return /^\d{1,2}:\d{2}$/.test(v) ? v.padStart(5, "0") : "";
+  let h = Number(m[1]) % 12;
+  if (/[Pp]/.test(m[3])) h += 12;
+  return `${String(h).padStart(2, "0")}:${m[2] ?? "00"}`;
+}
+
+// Only days the owner actually set anything for go out. A day left
+// untouched is unknown, not closed, so it is omitted rather than guessed.
+function serializeHours(rows: HourRow[]): string {
+  return rows
+    .filter((r) => r.closed || (r.open.trim() && r.close.trim()))
+    .map((r) =>
+      r.closed
+        ? `${r.day}: Closed`
+        : `${r.day}: ${to12h(r.open.trim())} - ${to12h(r.close.trim())}`,
+    )
+    .join("\n");
+}
+
+// The reverse of serializeHours. Best-effort: lines that match "Day: ..."
+// populate that day's row, anything else is left for the owner to redo.
+function deserializeHours(text: string): HourRow[] {
+  const rows = emptyHours();
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^([A-Za-z]+)\s*:\s*(.+)$/);
+    if (!m) continue;
+    const day = DAYS.find((d) => d.toLowerCase() === m[1].trim().toLowerCase());
+    if (!day) continue;
+    const rest = m[2].trim();
+    const row = rows.find((r) => r.day === day)!;
+    if (/^closed$/i.test(rest)) {
+      row.closed = true;
+      continue;
+    }
+    const range = rest.split(/\s*(?:[-–—]|to)\s*/i);
+    row.open = to24h(range[0]?.trim() ?? "");
+    row.close = to24h(range[1]?.trim() ?? "");
+  }
+  return rows;
+}
+
 // Purpose modes: each maps to a server-side block in /api/generate that
 // pre-loads the sections this kind of site actually needs.
 const SITE_TYPES = [
@@ -219,6 +290,7 @@ export function BuilderChat({
     { kind: "section", label: "" },
     { kind: "item", name: "", price: "" },
   ]);
+  const [hoursRows, setHoursRows] = useState<HourRow[]>(emptyHours());
   const [pasting, setPasting] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pasteNote, setPasteNote] = useState("");
@@ -1000,7 +1072,9 @@ document.addEventListener("click", function (e) {
     updated[qIndex] =
       interview[qIndex]?.kind === "menu"
         ? serializeMenu(menuRows)
-        : answerDraft.trim();
+        : interview[qIndex]?.kind === "hours"
+          ? serializeHours(hoursRows)
+          : answerDraft.trim();
     setAnswers(updated);
 
     // Jumped in from the review screen to fix one answer. Go back there.
@@ -1051,6 +1125,11 @@ document.addEventListener("click", function (e) {
       if (menuAt >= 0 && next[menuAt]) {
         const rows = deserializeMenu(next[menuAt]);
         if (rows.length > 0) setMenuRows(rows);
+      }
+
+      const hoursAt = interview.findIndex((item) => item.kind === "hours");
+      if (hoursAt >= 0 && next[hoursAt]) {
+        setHoursRows(deserializeHours(next[hoursAt]));
       }
 
       setReviewIndex(null);
@@ -1213,6 +1292,8 @@ document.addEventListener("click", function (e) {
     const filled = answers.filter((a) => a?.trim()).length;
     const menuAt = interview.findIndex((item) => item.kind === "menu");
     const menuItems = filledMenu.filter((r) => r.kind === "item").length;
+    const hoursAt = interview.findIndex((item) => item.kind === "hours");
+    const daysSet = hoursRows.filter((r) => r.closed || r.open.trim() || r.close.trim()).length;
 
     return (
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col overflow-y-auto p-8">
@@ -1236,6 +1317,7 @@ document.addEventListener("click", function (e) {
           {interview.map((item, i) => {
             const answer = answers[i] ?? "";
             const isMenu = item.kind === "menu";
+            const isHours = item.kind === "hours";
             const wasGuessed = guessed.includes(i);
 
             return (
@@ -1268,6 +1350,21 @@ document.addEventListener("click", function (e) {
                       className="ml-auto shrink-0 text-xs font-medium text-flame hover:underline"
                     >
                       {menuItems > 0 ? "check the menu →" : "add your menu →"}
+                    </button>
+                  </div>
+                ) : isHours ? (
+                  <div className="mt-2 flex items-center gap-3 rounded-lg border border-line bg-paper px-3 py-2.5">
+                    <p className="text-sm text-ink-soft">
+                      {daysSet > 0
+                        ? `${daysSet} day${daysSet === 1 ? "" : "s"} set`
+                        : "no hours set"}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => editAnswer(i)}
+                      className="ml-auto shrink-0 text-xs font-medium text-flame hover:underline"
+                    >
+                      {daysSet > 0 ? "check the hours →" : "add your hours →"}
                     </button>
                   </div>
                 ) : (
@@ -1314,6 +1411,7 @@ document.addEventListener("click", function (e) {
           onClick={() => {
             const final = [...answers];
             if (menuAt >= 0) final[menuAt] = serializeMenu(menuRows);
+            if (hoursAt >= 0) final[hoursAt] = serializeHours(hoursRows);
             finishInterview(final, leftover);
           }}
           disabled={filled === 0}
@@ -1534,6 +1632,87 @@ document.addEventListener("click", function (e) {
               without one instead of making a number up.
             </p>
           </div>
+        ) : current.kind === "hours" ? (
+          <div className="mt-6">
+            <div className="space-y-2">
+              {hoursRows.map((row, i) => (
+                <div key={row.day} className="flex items-center gap-2">
+                  <span className="w-24 shrink-0 text-sm text-ink-soft">
+                    {row.day}
+                  </span>
+                  {row.closed ? (
+                    <span className="flex-1 text-sm text-faint">Closed</span>
+                  ) : (
+                    <div className="flex flex-1 items-center gap-2">
+                      <input
+                        type="time"
+                        value={row.open}
+                        onChange={(e) =>
+                          setHoursRows((prev) =>
+                            prev.map((r, x) =>
+                              x === i ? { ...r, open: e.target.value } : r,
+                            ),
+                          )
+                        }
+                        aria-label={`${row.day} opening time`}
+                        className="w-full min-w-0 rounded-lg border border-line bg-paper px-2 py-2 text-sm outline-none focus:border-flame"
+                      />
+                      <span className="shrink-0 text-xs text-faint">to</span>
+                      <input
+                        type="time"
+                        value={row.close}
+                        onChange={(e) =>
+                          setHoursRows((prev) =>
+                            prev.map((r, x) =>
+                              x === i ? { ...r, close: e.target.value } : r,
+                            ),
+                          )
+                        }
+                        aria-label={`${row.day} closing time`}
+                        className="w-full min-w-0 rounded-lg border border-line bg-paper px-2 py-2 text-sm outline-none focus:border-flame"
+                      />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setHoursRows((prev) =>
+                        prev.map((r, x) =>
+                          x === i
+                            ? r.closed
+                              ? { ...r, closed: false }
+                              : { ...r, closed: true, open: "", close: "" }
+                            : r,
+                        ),
+                      )
+                    }
+                    className="w-16 shrink-0 text-xs text-faint transition hover:text-flame"
+                  >
+                    {row.closed ? "set hours" : "closed"}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const first = hoursRows.find((r) => !r.closed && r.open && r.close);
+                if (!first) return;
+                setHoursRows((prev) =>
+                  prev.map((r) =>
+                    r.closed ? r : { ...r, open: first.open, close: first.close },
+                  ),
+                );
+              }}
+              className="mt-4 rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame"
+            >
+              same hours every day
+            </button>
+            <p className="mt-3 text-xs text-faint">
+              Leave a day blank if you are not sure yet. We leave it off the
+              site instead of guessing.
+            </p>
+          </div>
         ) : (
           <>
             <textarea
@@ -1564,7 +1743,9 @@ document.addEventListener("click", function (e) {
           disabled={
             current.kind === "menu"
               ? filledMenu.filter((r) => r.kind === "item").length === 0
-              : !answerDraft.trim()
+              : current.kind === "hours"
+                ? !serializeHours(hoursRows)
+                : !answerDraft.trim()
           }
           className="mt-6 self-start rounded-full bg-flame px-8 py-3 font-display font-semibold text-paper transition hover:bg-flame-bright disabled:opacity-40"
         >
