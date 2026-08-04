@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BroadcastForm } from "@/components/BroadcastForm";
+import { LocalTime } from "@/components/LocalTime";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -119,7 +120,7 @@ export default async function Responses({
                 {submissions.map((s) => (
                   <tr key={s.id} className="border-b border-line last:border-0">
                     <td className="px-4 py-3 whitespace-nowrap text-faint">
-                      {new Date(s.created_at).toLocaleString()}
+                      <LocalTime iso={s.created_at} />
                     </td>
                     {columns.map((col) => (
                       <td key={col} className="px-4 py-3">
