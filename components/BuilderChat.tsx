@@ -361,6 +361,13 @@ export function BuilderChat({
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const buildStart = useRef<number | null>(null);
   const [buildSeconds, setBuildSeconds] = useState<number | null>(null);
+  // A multi-page site is generated one page at a time. Nothing is shown
+  // until every page is finished, so the preview never flashes a
+  // half-built site or an empty page that is still being written.
+  const [initialBuilding, setInitialBuilding] = useState(false);
+  const [buildPhase, setBuildPhase] = useState<string | null>(null);
+  const [buildTotal, setBuildTotal] = useState(0);
+  const [buildDone, setBuildDone] = useState(0);
   const [editMode, setEditMode] = useState(false);
   const [picked, setPicked] = useState<{ tag: string; text: string } | null>(null);
   const [multiPage, setMultiPage] = useState(initialMultiPage);
@@ -413,8 +420,12 @@ export function BuilderChat({
       });
       const data = await res.json();
       if (res.ok) {
+        const restoredPage: string = data.page ?? currentPage;
+        setPages((prev) => ({ ...prev, [restoredPage]: data.html }));
+        // Show the page that was actually restored, so the markup on screen
+        // always belongs to the tab that is selected.
+        setCurrentPage(restoredPage);
         setHtml(data.html);
-        setPages((prev) => ({ ...prev, [data.page ?? currentPage]: data.html }));
         setShowHistory(false);
         setMessages((prev) => [
           ...prev,
@@ -485,27 +496,44 @@ export function BuilderChat({
       .eq("id", projectId);
   }
 
+  // Mirrors currentPage so an in-flight generation can tell whether the
+  // user has since switched pages, without reading a stale closure.
+  const currentPageRef = useRef(currentPage);
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
   function switchPage(name: string) {
     setCurrentPage(name);
     setHtml(pages[name] ?? "");
     setPicked(null);
   }
 
-  function addPage() {
+  async function addPage() {
     const raw = prompt(
       "Name the new page (like about, menu, contact):",
     );
     if (!raw) return;
     const name = raw.toLowerCase().trim().replace(/[^a-z0-9-]/g, "-").slice(0, 24);
-    if (!name || pages[name]) return;
+    if (!name || pages[name] !== undefined) return;
     setPages((prev) => ({ ...prev, [name]: "" }));
     setCurrentPage(name);
     setHtml("");
-    generate(
+    const built = await generate(
       `Create the "${name}" page for this site. Match the existing style exactly and include the shared nav.`,
       undefined,
       name,
     );
+    // A failed page would otherwise sit in the nav forever as a blank tab.
+    if (!built) {
+      setPages((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+      setCurrentPage("home");
+      setHtml(pages.home ?? "");
+    }
   }
 
   // ---- #1 voice: dictate into any setter ----
@@ -589,6 +617,13 @@ document.addEventListener("click", function (e) {
   }}, "*");
 }, true);
 <\/script>`;
+
+  // Whether anything has finished building yet. Drives whether the preview
+  // shows the site or a waiting state, so an unbuilt page never renders as
+  // a blank white iframe.
+  const hasSite = Object.values(pages).some(
+    (p) => typeof p === "string" && p.trim() !== "",
+  );
 
   const injectedScripts = NAV_SCRIPT + (editMode ? EDIT_SCRIPT : "");
   const previewHtml = html
@@ -729,11 +764,16 @@ document.addEventListener("click", function (e) {
     message: string,
     imageUrls?: string[],
     pageOverride?: string,
+    /**
+     * Store the result without showing it. Used while a multi-page site is
+     * still being built, so the preview only ever flips once, at the end.
+     */
+    silent = false,
   ): Promise<string | null> {
     const targetPage = pageOverride ?? currentPage;
     setBusy(true);
     setError("");
-    if (!html) buildStart.current = Date.now();
+    if (!silent && !html) buildStart.current = Date.now();
     let finalMessage = message;
     if (picked) {
       finalMessage = `The user clicked this element on the page: <${picked.tag}> containing "${picked.text}". Apply the following change to that specific element (and only it unless asked otherwise): ${message}`;
@@ -761,13 +801,22 @@ document.addEventListener("click", function (e) {
         setError(data.error ?? "Something went wrong. Try again.");
         setMessages((prev) => prev.slice(0, -1));
       } else {
-        if (!html && buildStart.current) {
-          setBuildSeconds(Math.round((Date.now() - buildStart.current) / 1000));
-          buildStart.current = null;
-        }
-        setHtml(data.html);
         setPages((prev) => ({ ...prev, [targetPage]: data.html }));
-        setTab("preview");
+        if (!silent) {
+          if (!html && buildStart.current) {
+            setBuildSeconds(
+              Math.round((Date.now() - buildStart.current) / 1000),
+            );
+            buildStart.current = null;
+          }
+          // If the user switched pages while this was in flight, the result
+          // still belongs to targetPage. Showing it now would put another
+          // page's markup under the tab they are actually looking at.
+          if (targetPage === currentPageRef.current) {
+            setHtml(data.html);
+            setTab("preview");
+          }
+        }
         setMessages((prev) => [
           ...prev,
           { role: "assistant", content: data.summary },
@@ -820,16 +869,31 @@ document.addEventListener("click", function (e) {
           ? `This is a MULTI-PAGE WEBSITE. You are building the HOME page. The site also has these pages: ${extraPages.join(", ")}. Include a header nav linking to every page.`
           : "This is a WEBSITE: a single-page site with NO navigation tabs or menu links at the top, one continuous scrolling page.";
 
-    const homeHtml = await generate(
-      `${kindNote} ${typeHint ? `Build ${typeHint}. ` : ""}${description.trim()} ${style.prompt}${photoNote}`,
-      undefined,
-      "home",
-    );
+    // Every page is generated before anything is revealed, so the user
+    // never sees a half-built site or a page that is still being written.
+    const started = Date.now();
+    setInitialBuilding(true);
+    setBuildTotal(1 + extraPages.length);
+    setBuildDone(0);
+    setBuildPhase("home");
 
-    // Then build each extra page, matching the home page's style.
-    if (homeHtml) {
+    try {
+      const homeHtml = await generate(
+        `${kindNote} ${typeHint ? `Build ${typeHint}. ` : ""}${description.trim()} ${style.prompt}${photoNote}`,
+        undefined,
+        "home",
+        true,
+      );
+
+      // Home failed. generate() already surfaced the error, and there is
+      // nothing to match the extra pages against, so stop here.
+      if (!homeHtml) return;
+      setBuildDone(1);
+
+      const failed: string[] = [];
       for (const page of extraPages) {
-        await generate(
+        setBuildPhase(page);
+        const built = await generate(
           `Create the "${page}" page for this site. Match the home page's style, fonts, colors, header, and nav exactly.${
             page === "menu"
               ? " Lay out the full menu using the items and prices the owner gave, grouped into clear sections with real headings. Prices right-aligned or clearly separated from item names. No invented items, no invented prices. If they did not give a price for something, leave the price off rather than guessing."
@@ -837,10 +901,28 @@ document.addEventListener("click", function (e) {
           }`,
           undefined,
           page,
+          true,
         );
+        if (!built) failed.push(page);
+        setBuildDone((n) => n + 1);
       }
+
+      // Reveal the finished site in one step.
       setCurrentPage("home");
       setHtml(homeHtml);
+      setTab("preview");
+      setBuildSeconds(Math.round((Date.now() - started) / 1000));
+
+      if (failed.length > 0) {
+        setError(
+          `Your home page is ready, but the ${failed.join(" and ")} page${
+            failed.length === 1 ? "" : "s"
+          } did not build. Ask for it again and it will retry.`,
+        );
+      }
+    } finally {
+      setInitialBuilding(false);
+      setBuildPhase(null);
     }
   }
 
@@ -2208,7 +2290,34 @@ document.addEventListener("click", function (e) {
         </div>
         <div className="min-h-0 flex-1 p-4">
           {tab === "preview" ? (
-            html || multiPage ? (
+            initialBuilding ? (
+              // Nothing is shown until every page is finished.
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <p className="font-display text-lg font-semibold tracking-tight">
+                  building your site
+                  <span className="text-flame">.</span>
+                </p>
+                <p className="text-sm text-ink-soft">
+                  {buildTotal > 1
+                    ? `Writing the ${buildPhase} page (${Math.min(buildDone + 1, buildTotal)} of ${buildTotal}).`
+                    : "Writing your home page."}
+                </p>
+                {buildTotal > 1 && (
+                  <div className="h-1 w-48 overflow-hidden rounded-full bg-line">
+                    <div
+                      className="h-full rounded-full bg-flame transition-all duration-500"
+                      style={{
+                        width: `${Math.round((buildDone / buildTotal) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                )}
+                <p className="max-w-xs text-xs text-faint">
+                  This takes a minute or two. We show it once the whole site
+                  is ready, not half-finished.
+                </p>
+              </div>
+            ) : hasSite ? (
               <>
               {multiPage && (
                 <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-mist/40 px-3 py-2">
@@ -2239,7 +2348,17 @@ document.addEventListener("click", function (e) {
                   </button>
                 </div>
               )}
-              {device === "phone" ? (
+              {!html ? (
+                // This page exists but has not been written yet. Showing an
+                // empty iframe here is what made new pages look blank.
+                <div className="flex h-full items-center justify-center">
+                  <p className="text-sm text-faint">
+                    {busy
+                      ? `Building the ${currentPage} page…`
+                      : `The ${currentPage} page has not been built yet. Ask for it in the chat.`}
+                  </p>
+                </div>
+              ) : device === "phone" ? (
                 <div className="flex h-full items-start justify-center overflow-hidden py-2">
                   <iframe
                     srcDoc={previewHtml}
