@@ -38,17 +38,25 @@ export default async function Builder({
   return (
     <main className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-line px-6 py-4">
-        <div className="flex items-center gap-5">
+        <div className="flex min-w-0 items-center gap-5">
           <Link
             href="/dashboard"
-            className="font-display text-sm font-semibold tracking-[0.4em]"
+            className="font-display shrink-0 text-sm font-semibold tracking-[0.4em]"
           >
             LYPO<span className="text-flame">.</span>
           </Link>
-          <span className="text-sm text-ink-soft">{project.name}</span>
+          <Link
+            href="/dashboard"
+            className="shrink-0 text-sm text-faint transition hover:text-flame"
+          >
+            ← projects
+          </Link>
+          <span className="max-w-[16rem] truncate text-sm text-ink-soft">
+            {project.name}
+          </span>
           <Link
             href={`/builder/${id}/responses`}
-            className="text-sm text-ink-soft transition hover:text-flame"
+            className="shrink-0 text-sm text-ink-soft transition hover:text-flame"
           >
             responses
           </Link>

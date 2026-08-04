@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ProjectCard } from "@/components/ProjectCard";
+import { siteUrlFor } from "@/lib/site-url";
 
 export default async function Dashboard() {
   const supabase = await createClient();
@@ -14,7 +15,7 @@ export default async function Dashboard() {
 
   const { data: projects } = await supabase
     .from("projects")
-    .select("id, name, status, html, updated_at")
+    .select("id, name, status, html, slug, updated_at")
     .is("deleted_at", null)
     .order("updated_at", { ascending: false });
 
@@ -30,6 +31,11 @@ export default async function Dashboard() {
         (viewsByProject[v.project_id] ?? 0) + (v.count ?? 0);
     }
   }
+
+  const total = projects?.length ?? 0;
+  const publishedCount =
+    projects?.filter((p) => p.status === "published").length ?? 0;
+  const totalViews = Object.values(viewsByProject).reduce((a, b) => a + b, 0);
 
   return (
     <main className="mx-auto max-w-6xl px-6">
@@ -47,10 +53,20 @@ export default async function Dashboard() {
       </header>
 
       <section className="pt-20 pb-24">
-        <div className="flex items-end justify-between">
-          <h1 className="font-display text-5xl font-semibold tracking-tight">
-            your projects<span className="text-flame">.</span>
-          </h1>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="font-display text-5xl font-semibold tracking-tight">
+              your projects<span className="text-flame">.</span>
+            </h1>
+            {total > 0 && (
+              <p className="mt-2 text-sm text-ink-soft">
+                {total} project{total === 1 ? "" : "s"}
+                {publishedCount > 0 && `, ${publishedCount} published`}
+                {totalViews > 0 &&
+                  ` · ${totalViews.toLocaleString()} view${totalViews === 1 ? "" : "s"} in total`}
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-6 text-sm">
             <Link
               href="/settings"
@@ -95,6 +111,11 @@ export default async function Dashboard() {
                 status={project.status}
                 html={project.html}
                 views={viewsByProject[project.id] ?? 0}
+                liveUrl={
+                  project.status === "published" && project.slug
+                    ? siteUrlFor(project.slug)
+                    : null
+                }
               />
             ))}
           </div>

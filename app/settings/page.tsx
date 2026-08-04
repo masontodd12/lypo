@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { EmailChangeForm } from "@/components/EmailChangeForm";
 import { StripeConnectCard } from "@/components/StripeConnectCard";
+import { SignOutButton } from "@/components/SignOutButton";
 
 export default async function Settings() {
   const supabase = await createClient();
@@ -57,6 +58,10 @@ export default async function Settings() {
         </div>
 
         <StripeConnectCard connected={!!stripeAccount?.account_id} />
+
+        <div className="mt-14 border-t border-line pt-6 text-sm">
+          <SignOutButton />
+        </div>
       </section>
     </main>
   );

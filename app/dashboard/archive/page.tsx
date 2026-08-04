@@ -64,10 +64,18 @@ export default async function Archive() {
                 key={project.id}
                 className="flex items-center justify-between px-5 py-4"
               >
-                <div>
-                  <p className="font-display font-semibold">{project.name}</p>
+                <div className="min-w-0">
+                  <p className="font-display truncate font-semibold">
+                    {project.name}
+                  </p>
                   <p className="mt-0.5 text-xs text-faint">
-                    {daysLeft(project.deleted_at!)} days left
+                    {(() => {
+                      const left = daysLeft(project.deleted_at!);
+                      if (left === 0) return "deleted for good today";
+                      return `${left} day${left === 1 ? "" : "s"} left`;
+                    })()}
+                    {project.status === "published" &&
+                      " · was published, now offline"}
                   </p>
                 </div>
                 <RestoreButton id={project.id} />

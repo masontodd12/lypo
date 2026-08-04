@@ -11,17 +11,33 @@ export function ProjectCard({
   status,
   html,
   views = 0,
+  liveUrl = null,
 }: {
   id: string;
   name: string;
   status: string;
   html: string | null;
   views?: number;
+  /** Public address, only for published projects. */
+  liveUrl?: string | null;
 }) {
   const router = useRouter();
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState(name);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function cancelRename() {
+    setNewName(name);
+    setRenaming(false);
+  }
+
+  async function copyLink() {
+    if (!liveUrl) return;
+    await navigator.clipboard.writeText(liveUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
 
   async function rename() {
     const value = newName.trim();
@@ -55,7 +71,7 @@ export function ProjectCard({
   }
 
   return (
-    <div className="group relative rounded-xl border border-line bg-paper p-4 transition hover:border-flame">
+    <div className="relative rounded-xl border border-line bg-paper p-4 transition hover:border-flame">
       <Link href={`/builder/${id}`} className="block">
         {/* Preview: mini render of the real site, or black if nothing built */}
         <div className="h-36 overflow-hidden rounded-lg border border-line bg-ink">
@@ -97,25 +113,54 @@ export function ProjectCard({
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && rename()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") rename();
+              if (e.key === "Escape") cancelRename();
+            }}
             autoFocus
             aria-label="New project name"
-            className="w-full border-b-2 border-ink bg-transparent py-1 text-sm outline-none focus:border-flame"
+            className="w-full min-w-0 border-b-2 border-ink bg-transparent py-1 text-sm outline-none focus:border-flame"
           />
           <button
             onClick={rename}
             disabled={busy}
-            className="text-sm font-medium text-flame disabled:opacity-40"
+            className="shrink-0 text-sm font-medium text-flame disabled:opacity-40"
           >
             save
+          </button>
+          <button
+            onClick={cancelRename}
+            disabled={busy}
+            className="shrink-0 text-sm text-faint transition hover:text-ink disabled:opacity-40"
+          >
+            cancel
           </button>
         </div>
       )}
 
-      {/* Card actions. Hidden until hover on a mouse, but always visible on
-          touch (no hover) and whenever focus lands inside, so they are not
-          reachable by mouse alone. */}
-      <div className="absolute top-3 right-3 flex gap-1 rounded-full border border-line bg-paper px-2 py-1 opacity-100 shadow-sm transition focus-within:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0">
+      {/* Published projects: reach the real site without opening the builder. */}
+      {liveUrl && !renaming && (
+        <div className="mt-3 flex items-center gap-4 border-t border-line pt-3 text-xs">
+          <a
+            href={liveUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-ink-soft transition hover:text-flame"
+          >
+            view live ↗
+          </a>
+          <button
+            onClick={copyLink}
+            className="font-medium text-ink-soft transition hover:text-flame"
+          >
+            {copied ? "copied!" : "copy link"}
+          </button>
+        </div>
+      )}
+
+      {/* Card actions stay visible rather than appearing on hover: hover-only
+          controls are invisible on touch and easy to miss entirely. */}
+      <div className="absolute top-3 right-3 flex gap-1 rounded-full border border-line bg-paper/95 px-2 py-1 shadow-sm">
         <button
           onClick={(e) => {
             e.preventDefault();
