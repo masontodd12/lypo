@@ -43,9 +43,10 @@ REQUIRED:
 
 INTERACTIVITY (vanilla JS only, no libraries, no CDN scripts, everything inline in one <script> tag):
 - Give ordinary pages real working JS, not just static markup: smooth-scroll for on-page anchor links, a subtle reveal-on-scroll for sections using IntersectionObserver (opacity/translate only, no bounce or parallax), and a mobile menu toggle if the header nav has more than 4 links.
+- The reveal animation must never be able to hide the page. Do NOT put the hidden state in your CSS; the script adds the hiding class itself before it starts observing, so if the script never runs the content is simply visible. Skip the animation entirely when matchMedia("(prefers-reduced-motion: reduce)").matches, and reveal every section immediately in that case.
 - Photo sets of 3+ images get a click-to-enlarge lightbox with a close control and Escape-to-close, built with plain JS and a fixed-position overlay or <dialog>. Don't just link an image to itself.
 - Long structured content (FAQs, hours, policies) can use native <details>/<summary> instead of a wall of text.
-- Forms get real client-side validation: required/type attributes plus a visible inline error state on submit, so the visitor gets feedback before Lypo's automatic capture happens.
+- Forms get real validation, but with HTML and CSS only: required, type="email", inputmode, minlength, pattern, plus a visible invalid state styled with :user-invalid (fall back to :invalid). Never add a submit, onsubmit, or click handler to a form or its button, and never call preventDefault or stopPropagation on a submit event. Lypo listens for the submit event to capture the response; a handler of your own stops the visitor's signup from ever being recorded.
 - If the site has a street address, embed a live map: <iframe src="https://www.google.com/maps?q=<url-encoded address>&output=embed"> at a reasonable height, in addition to the tap-to-call link and text address, not instead of them.
 - Add schema.org structured data in a <script type="application/ld+json"> tag matching the site (LocalBusiness for restaurant/barbershop/business/foodtruck, Event for event/dated fundraisers), using only real fields the user gave. Omit fields you don't have data for; never guess a value to fill one in.
 
@@ -289,15 +290,13 @@ export async function POST(request: Request) {
   }
 
   const data = await apiResponse.json();
+  const finishReason: string | undefined = data.choices?.[0]?.finish_reason;
   const raw: string = (data.choices?.[0]?.message?.content ?? "").trim();
 
   if (!raw) {
     console.error(
       "OpenAI returned empty content:",
-      JSON.stringify({
-        finish_reason: data.choices?.[0]?.finish_reason,
-        usage: data.usage,
-      }),
+      JSON.stringify({ finish_reason: finishReason, usage: data.usage }),
     );
     return NextResponse.json(
       { error: "Generation came back empty. Try again." },
@@ -314,6 +313,29 @@ export async function POST(request: Request) {
     .replace(/^```html?\s*/i, "")
     .replace(/```\s*$/, "")
     .trim();
+
+  // A response cut off at the token ceiling is a half-written document.
+  // Saving it would replace a working page with a broken one, so bail out
+  // and leave whatever the project already has untouched.
+  const looksComplete = /<\/html\s*>|<\/body\s*>/i.test(html);
+  if (finishReason === "length" || !looksComplete) {
+    console.error(
+      "Discarded truncated generation:",
+      JSON.stringify({
+        finish_reason: finishReason,
+        looksComplete,
+        chars: html.length,
+        usage: data.usage,
+      }),
+    );
+    return NextResponse.json(
+      {
+        error:
+          "That answer got cut off before the page was finished, so nothing was changed. Try again, or ask for a smaller change.",
+      },
+      { status: 502 },
+    );
+  }
 
   // ----- Save everything -----
   const newMessages = [
