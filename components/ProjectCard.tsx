@@ -70,9 +70,7 @@ export function ProjectCard({
             />
           ) : (
             <div className="flex h-full items-center justify-center">
-              <span className="text-xs text-paper-dim text-white/40">
-                nothing built yet
-              </span>
+              <span className="text-xs text-paper-dim">nothing built yet</span>
             </div>
           )}
         </div>
@@ -114,8 +112,10 @@ export function ProjectCard({
         </div>
       )}
 
-      {/* hover actions */}
-      <div className="absolute top-3 right-3 flex gap-1 rounded-full border border-line bg-paper px-2 py-1 opacity-0 shadow-sm transition group-hover:opacity-100">
+      {/* Card actions. Hidden until hover on a mouse, but always visible on
+          touch (no hover) and whenever focus lands inside, so they are not
+          reachable by mouse alone. */}
+      <div className="absolute top-3 right-3 flex gap-1 rounded-full border border-line bg-paper px-2 py-1 opacity-100 shadow-sm transition focus-within:opacity-100 group-hover:opacity-100 [@media(hover:hover)]:opacity-0">
         <button
           onClick={(e) => {
             e.preventDefault();

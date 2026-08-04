@@ -58,7 +58,15 @@ function LoginForm() {
           <p className="font-medium">Check your email</p>
           <p className="mt-1 text-sm text-ink-soft">
             A sign-in link is on its way to {email}. It may take a minute.
+            Check your spam folder if it does not show up.
           </p>
+          <button
+            type="button"
+            onClick={() => setStatus("idle")}
+            className="mt-4 text-sm font-medium text-flame transition hover:underline"
+          >
+            use a different email
+          </button>
         </div>
       ) : (
         <form onSubmit={sendLink} className="mt-10">

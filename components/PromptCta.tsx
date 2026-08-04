@@ -22,13 +22,13 @@ export function PromptCta() {
   }
 
   return (
-    <div className="relative z-10 mx-auto mt-12 max-w-2xl">
+    <div className="relative z-10 mx-auto mt-8 max-w-2xl">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           start(idea);
         }}
-        className="flex items-center gap-2 rounded-2xl border border-ink-soft bg-ink-soft p-2 shadow-[0_0_60px_-20px_#e8542f66] focus-within:border-flame"
+        className="flex items-center gap-2 rounded-2xl border border-ink bg-ink p-2 shadow-[0_0_60px_-20px_#e8542f66] focus-within:border-flame"
       >
         <input
           value={idea}
@@ -45,13 +45,16 @@ export function PromptCta() {
         </button>
       </form>
 
-      <div className="mt-4 flex flex-wrap justify-center gap-2">
+      <p className="mt-4 text-center text-xs text-faint">
+        or start from one of these
+      </p>
+      <div className="mt-2 flex flex-wrap justify-center gap-2">
         {EXAMPLES.map((example) => (
           <button
             key={example}
             type="button"
             onClick={() => start(example)}
-            className="rounded-full border border-ink-soft px-3 py-1.5 text-xs text-paper-dim transition hover:border-flame hover:text-paper"
+            className="rounded-full border border-line px-3 py-1.5 text-xs text-ink-soft transition hover:border-flame hover:text-flame"
           >
             {example}
           </button>
