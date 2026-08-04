@@ -126,19 +126,44 @@ export default async function PublicSubPage({
     return data;
   }
 
+  // Inherits the page's own font and colors so it reads as part of the
+  // site rather than a browser dialog.
+  function notice(message, tone) {
+    var bar = document.createElement("div");
+    bar.setAttribute("role", "status");
+    bar.style.cssText =
+      "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;" +
+      "max-width:min(30rem,calc(100vw - 2rem));padding:0.85rem 1.25rem;border-radius:10px;" +
+      "font:inherit;font-size:0.95rem;line-height:1.4;text-align:center;color:#fff;" +
+      "box-shadow:0 8px 30px rgba(0,0,0,0.18);background:" +
+      (tone === "error" ? "#B3341A" : "#1F7A4D") + ";";
+    bar.textContent = message;
+    document.body.appendChild(bar);
+    setTimeout(function () { bar.remove(); }, 6000);
+  }
+
   function send(scope, resetTarget) {
+    var THANKS = "Thanks, your response was received.";
     fetch(LYPO_SUBMIT, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ projectId: LYPO_PROJECT_ID, data: collect(scope) })
-    }).then(function () {
+    }).then(function (r) {
+      // A non-2xx means it was NOT stored. Never tell someone their
+      // signup went through when it did not.
+      if (!r.ok) {
+        return r.json().catch(function () { return {}; }).then(function (data) {
+          notice(data.error || "That did not send. Please try again.", "error");
+        });
+      }
       if (resetTarget) {
-        resetTarget.innerHTML = '<p style="padding:1.5rem;text-align:center;font-size:1.1rem;">Thanks, your response was received.</p>';
+        resetTarget.innerHTML =
+          '<p style="padding:1.5rem;text-align:center;font-size:1.1rem;">' + THANKS + '</p>';
       } else {
-        alert("Thanks, your response was received.");
+        notice(THANKS);
       }
     }).catch(function () {
-      alert("Something went wrong sending your response. Please try again.");
+      notice("Something went wrong sending your response. Please try again.", "error");
     });
   }
 
