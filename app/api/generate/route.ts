@@ -41,6 +41,17 @@ REQUIRED:
 - Every site has a real <footer>: org/business name with a copyright line, a repeat of essential contact info (phone/address) if given, and links to any other pages or socials that exist. A footer that's just a copyright line when there's more real info to put there looks unfinished.
 - Interactive elements (buttons, links, inputs) have a visible hover/focus state distinct from their resting state. A flat, static-feeling control is one of the clearest "unfinished template" tells on a real device.
 
+CRAFT (this is what separates a professional page from a template, be concrete, not decorative):
+- Commit to one type scale and reuse it. Something like: h1 clamp(2rem,5vw,3.25rem), h2 clamp(1.4rem,3vw,2rem), h3 1.15rem, body 1.0625rem, small 0.875rem. Never size text ad hoc per section.
+- Line height tightens as type grows: 1.1 on the h1, 1.25 on section headings, 1.6 on body copy. Add letter-spacing:-0.02em to large display text and never letter-space body text.
+- Commit to one spacing scale, multiples of 4px (8, 12, 16, 24, 32, 48, 64, 96), and use it for every margin, gap and pad. Mixed arbitrary values are the clearest sign of a page assembled rather than designed.
+- Above the fold on a phone a visitor must get: who this is, what it is, where or when, and the one action you want. If your hero pushes the useful facts below the fold, the hero is too big.
+- Give the page a spine and follow it: hero, then the single most useful block (hours and address, the ask, the work), then the story, then supporting detail, then contact, then footer. Do not open with an About section.
+- One primary button per screenful. Everything else is a text link or an outline button. Buttons are 44px tall minimum with 20-28px of horizontal padding, and their label says the action.
+- Reuse one card and one section pattern down the whole page. Inventing a new visual treatment per section is what makes a page look assembled by a machine.
+- Keep measured line length: 60-75 characters for body copy, and never let a paragraph run the full width of a desktop screen.
+- Contrast is structural, not decorative: the page should still read as organised in greyscale. If it only works because of the accent color, the layout is doing no work.
+
 INTERACTIVITY (vanilla JS only, no libraries, no CDN scripts, everything inline in one <script> tag):
 - Give ordinary pages real working JS, not just static markup: smooth-scroll for on-page anchor links, a subtle reveal-on-scroll for sections using IntersectionObserver (opacity/translate only, no bounce or parallax), and a mobile menu toggle if the header nav has more than 4 links.
 - The reveal animation must never be able to hide the page. Do NOT put the hidden state in your CSS; the script adds the hiding class itself before it starts observing, so if the script never runs the content is simply visible. Skip the animation entirely when matchMedia("(prefers-reduced-motion: reduce)").matches, and reveal every section immediately in that case.

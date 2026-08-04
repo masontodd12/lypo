@@ -10,9 +10,10 @@ const MIN_CHARS = 40;
 function buildPrompt(interview: Question[]): string {
   const questionList = interview
     .map((item, i) => {
+      const noun = item.itemNoun ?? "item";
       const format =
         item.kind === "menu"
-          ? `\n   FORMAT: one item per line as "item name | $price". Put section headings on their own line in square brackets, like [Plates]. If they gave no price for an item, write "item name | NO PRICE GIVEN". Never invent a price and never invent an item.`
+          ? `\n   FORMAT: one ${noun} per line as "${noun} name | $price". Put section headings on their own line in square brackets, like [Plates]. If they gave no price for a ${noun}, write "${noun} name | NO PRICE GIVEN". Never invent a price and never invent a ${noun}.`
           : item.kind === "hours"
             ? `\n   FORMAT: one line per day of the week you have real hours for, exactly as "Monday: 11:00 AM - 7:00 PM" (use "Closed" in place of times for a day stated as closed). Only include a day if the text actually says something about it. Never invent hours for a day it does not mention.`
             : "";

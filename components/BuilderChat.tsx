@@ -52,6 +52,28 @@ function Switch({
   );
 }
 
+/** Labels for the priced grid, which collects menus, services or products. */
+const NOUNS = {
+  item: {
+    one: "item",
+    list: "menu",
+    sectionHint: "section name (appetizers, plates, drinks)",
+    addItem: "+ add item",
+  },
+  service: {
+    one: "service",
+    list: "service list",
+    sectionHint: "section name (cuts, color, kids)",
+    addItem: "+ add service",
+  },
+  product: {
+    one: "product",
+    list: "product list",
+    sectionHint: "section name (candles, gift sets, seconds)",
+    addItem: "+ add product",
+  },
+} as const;
+
 function SettingRow({
   title,
   body,
@@ -1248,7 +1270,7 @@ document.addEventListener("click", function (e) {
         const answer = (final[i] ?? "").trim();
         if (!answer) return "";
         return item.kind === "menu"
-          ? `THE MENU (each line is "item | price", [brackets] are section headings, use these exactly and invent nothing):\n${answer}`
+          ? `THE ${(item.itemNoun ?? "item").toUpperCase()} LIST (each line is "${item.itemNoun ?? "item"} | price", [brackets] are section headings, use these exactly and invent nothing):\n${answer}`
           : `${item.q} ${answer}`;
       })
       .filter(Boolean)
@@ -1529,20 +1551,27 @@ document.addEventListener("click", function (e) {
                 </div>
 
                 {isMenu ? (
-                  <div className="mt-2 flex items-center gap-3 rounded-lg border border-line bg-paper px-3 py-2.5">
-                    <p className="text-sm text-ink-soft">
-                      {menuItems > 0
-                        ? `${menuItems} item${menuItems === 1 ? "" : "s"} found`
-                        : "no menu items found"}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => editAnswer(i)}
-                      className="ml-auto shrink-0 text-xs font-medium text-flame hover:underline"
-                    >
-                      {menuItems > 0 ? "check the menu →" : "add your menu →"}
-                    </button>
-                  </div>
+                  (() => {
+                    const n = NOUNS[item.itemNoun ?? "item"];
+                    return (
+                      <div className="mt-2 flex items-center gap-3 rounded-lg border border-line bg-paper px-3 py-2.5">
+                        <p className="text-sm text-ink-soft">
+                          {menuItems > 0
+                            ? `${menuItems} ${n.one}${menuItems === 1 ? "" : "s"} found`
+                            : `no ${n.one}s found`}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => editAnswer(i)}
+                          className="ml-auto shrink-0 text-xs font-medium text-flame hover:underline"
+                        >
+                          {menuItems > 0
+                            ? `check the ${n.list} →`
+                            : `add your ${n.list} →`}
+                        </button>
+                      </div>
+                    );
+                  })()
                 ) : isHours ? (
                   <div className="mt-2 flex items-center gap-3 rounded-lg border border-line bg-paper px-3 py-2.5">
                     <p className="text-sm text-ink-soft">
@@ -1619,6 +1648,9 @@ document.addEventListener("click", function (e) {
 
   if (step === "describe") {
     const current = interview[qIndex];
+    // The priced grid is reused for menus, service lists and product lists,
+    // so its labels follow whatever this question is actually collecting.
+    const noun = NOUNS[current.itemNoun ?? "item"];
     return (
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
         <button
@@ -1638,23 +1670,40 @@ document.addEventListener("click", function (e) {
         >
           ← back
         </button>
-        <p className="mt-8 text-xs tracking-widest text-faint">
-          {reviewIndex !== null
-            ? "fixing one answer"
-            : `${qIndex + 1} / ${interview.length}`}
-        </p>
-        <h2 className="font-display mt-2 text-3xl font-semibold tracking-tight">
+        <div className="mt-8">
+          <p className="text-xs tracking-widest text-faint">
+            {reviewIndex !== null
+              ? "fixing one answer"
+              : `${qIndex + 1} of ${interview.length}`}
+          </p>
+          {reviewIndex === null && (
+            <div className="mt-2 h-1 w-full max-w-xs overflow-hidden rounded-full bg-line">
+              <div
+                className="h-full rounded-full bg-flame transition-all duration-300"
+                style={{
+                  width: `${Math.round((qIndex / interview.length) * 100)}%`,
+                }}
+              />
+            </div>
+          )}
+        </div>
+        <h2 className="font-display mt-4 text-3xl font-semibold tracking-tight">
           {current.q}
           <span className="text-flame">.</span>
         </h2>
-        <p className="mt-2 text-sm text-ink-soft">{current.hint}</p>
+        <p className="mt-2 text-sm text-ink-soft">
+          {current.hint}
+          {current.optional && (
+            <span className="text-faint"> You can skip this one.</span>
+          )}
+        </p>
 
         {current.kind === "menu" ? (
           <div className="mt-6">
-            {/* paste an existing menu instead of typing it */}
+            {/* paste an existing list instead of typing it */}
             {pasting ? (
               <div className="mb-5 rounded-xl border border-line bg-paper p-4">
-                <p className="text-sm font-medium">paste your menu</p>
+                <p className="text-sm font-medium">paste your {noun.list}</p>
                 <p className="mt-1 text-xs text-ink-soft">
                   Copy it from your website, your online ordering page, or
                   anywhere you already have it typed. Prices can be on the same
@@ -1665,7 +1714,7 @@ document.addEventListener("click", function (e) {
                   onChange={(e) => setPasteText(e.target.value)}
                   rows={9}
                   autoFocus
-                  aria-label="Paste your existing menu"
+                  aria-label={`Paste your existing ${noun.list}`}
                   placeholder={
                     "Combos\n3 PC Whole Wing Combo\n$11.99\n\nParty Wings\n10 PC Party Wings  $13.61"
                   }
@@ -1706,7 +1755,7 @@ document.addEventListener("click", function (e) {
                   }}
                   className="rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame"
                 >
-                  paste an existing menu
+                  paste an existing {noun.list}
                 </button>
                 <span className="text-xs text-faint">
                   Already have it typed somewhere? Paste it and we&apos;ll
@@ -1725,7 +1774,7 @@ document.addEventListener("click", function (e) {
                     <input
                       value={row.label}
                       onChange={(e) => updateRow(i, { label: e.target.value })}
-                      placeholder="section name (appetizers, plates, drinks)"
+                      placeholder={noun.sectionHint}
                       aria-label={`Section ${i + 1} name`}
                       className="font-display w-full border-b-2 border-ink bg-transparent py-1.5 text-sm font-semibold tracking-tight outline-none placeholder:font-normal placeholder:text-faint focus:border-flame"
                     />
@@ -1745,8 +1794,8 @@ document.addEventListener("click", function (e) {
                     <input
                       value={row.name}
                       onChange={(e) => updateRow(i, { name: e.target.value })}
-                      placeholder="item name"
-                      aria-label={`Item ${i + 1} name`}
+                      placeholder={`${noun.one} name`}
+                      aria-label={`${noun.one} ${i + 1} name`}
                       className="w-full min-w-0 rounded-lg border border-line bg-paper px-3 py-2 text-sm outline-none placeholder:text-faint focus:border-flame"
                     />
                     <div className="flex w-28 shrink-0 items-center rounded-lg border border-line bg-paper px-2 focus-within:border-flame">
@@ -1756,7 +1805,7 @@ document.addEventListener("click", function (e) {
                         onChange={(e) => updateRow(i, { price: e.target.value })}
                         placeholder="12"
                         inputMode="decimal"
-                        aria-label={`Item ${i + 1} price`}
+                        aria-label={`${noun.one} ${i + 1} price`}
                         className="w-full min-w-0 bg-transparent py-2 pl-1 text-sm outline-none placeholder:text-faint"
                       />
                     </div>
@@ -1786,7 +1835,7 @@ document.addEventListener("click", function (e) {
                 }
                 className="rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame"
               >
-                + add item
+                {noun.addItem}
               </button>
               <button
                 type="button"
@@ -1805,7 +1854,7 @@ document.addEventListener("click", function (e) {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!confirm("Clear the whole menu and start over?")) return;
+                    if (!confirm(`Clear the whole ${noun.list} and start over?`)) return;
                     setMenuRows([
                       { kind: "section", label: "" },
                       { kind: "item", name: "", price: "" },
@@ -1819,7 +1868,7 @@ document.addEventListener("click", function (e) {
               )}
             </div>
             <p className="mt-3 text-xs text-faint">
-              Leave a price blank if it changes. We&apos;ll show the item
+              Leave a price blank if it changes. We&apos;ll show the {noun.one}
               without one instead of making a number up.
             </p>
           </div>
@@ -1928,24 +1977,39 @@ document.addEventListener("click", function (e) {
           </>
         )}
 
-        <button
-          type="button"
-          onClick={nextQuestion}
-          disabled={
-            current.kind === "menu"
-              ? filledMenu.filter((r) => r.kind === "item").length === 0
-              : current.kind === "hours"
-                ? !serializeHours(hoursRows)
-                : !answerDraft.trim()
-          }
-          className="mt-6 self-start rounded-full bg-flame px-8 py-3 font-display font-semibold text-paper transition hover:bg-flame-bright disabled:opacity-40"
-        >
-          {reviewIndex !== null
-            ? "save and go back →"
-            : qIndex < interview.length - 1
-              ? "next →"
-              : "almost done →"}
-        </button>
+        <div className="mt-6 flex items-center gap-5">
+          <button
+            type="button"
+            onClick={nextQuestion}
+            disabled={
+              current.optional
+                ? false
+                : current.kind === "menu"
+                  ? filledMenu.filter((r) => r.kind === "item").length === 0
+                  : current.kind === "hours"
+                    ? !serializeHours(hoursRows)
+                    : !answerDraft.trim()
+            }
+            className="self-start rounded-full bg-flame px-8 py-3 font-display font-semibold text-paper transition hover:bg-flame-bright disabled:opacity-40"
+          >
+            {reviewIndex !== null
+              ? "save and go back →"
+              : qIndex < interview.length - 1
+                ? "next →"
+                : "almost done →"}
+          </button>
+          {/* A blank answer leaves the section off the site, which beats
+              pressuring someone into inventing one. */}
+          {current.optional && !answerDraft.trim() && reviewIndex === null && (
+            <button
+              type="button"
+              onClick={nextQuestion}
+              className="text-sm text-faint transition hover:text-flame"
+            >
+              skip
+            </button>
+          )}
+        </div>
       </div>
     );
   }
