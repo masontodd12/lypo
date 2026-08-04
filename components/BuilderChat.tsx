@@ -374,6 +374,7 @@ export function BuilderChat({
     { id: string; summary: string | null; created_at: string }[]
   >([]);
   const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const [roasting, setRoasting] = useState(false);
 
   async function openHistory() {
@@ -387,10 +388,15 @@ export function BuilderChat({
       const res = await fetch(
         `/api/versions?projectId=${projectId}&page=${currentPage}`,
       );
+      if (!res.ok) throw new Error("history request failed");
       const data = await res.json();
       setVersions(data.versions ?? []);
+      setHistoryError("");
     } catch {
       setVersions([]);
+      // Distinguish "couldn't load" from "nothing saved yet", so a failed
+      // request doesn't read as lost history.
+      setHistoryError("Couldn't load your history. Try again in a moment.");
     } finally {
       setHistoryBusy(false);
     }
@@ -2093,6 +2099,8 @@ document.addEventListener("click", function (e) {
           <div className="mt-3 max-h-48 overflow-y-auto rounded-xl border border-line bg-paper p-2">
             {historyBusy && versions.length === 0 ? (
               <p className="px-2 py-1 text-xs text-faint">loading…</p>
+            ) : historyError ? (
+              <p className="px-2 py-1 text-xs text-flame">{historyError}</p>
             ) : versions.length === 0 ? (
               <p className="px-2 py-1 text-xs text-faint">
                 No versions yet. Every change you make from now on is saved
