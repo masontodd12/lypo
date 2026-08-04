@@ -16,23 +16,56 @@
   --font-body: var(--font-body), system-ui, sans-serif;
 }
 
+/*
+ * Dark theme. Tailwind v4 emits every @theme value as a custom property on
+ * :root, and utilities reference those properties, so overriding them here
+ * re-themes every existing class without touching a single component.
+ * The palette stays warm: near-black with a brown cast, never blue-grey.
+ */
+:root[data-theme="dark"] {
+  --color-ink: #f3eee8;
+  --color-ink-soft: #b0a69a;
+  --color-faint: #7b7167;
+  --color-paper: #16120f;
+  --color-paper-dim: #6d645b;
+  --color-mist: #1e1813;
+  --color-line: #302821;
+  /* Lifted slightly so it still reads against a dark surface. */
+  --color-flame: #f2673f;
+  --color-flame-bright: #f6ad51;
+}
+
 html {
   scroll-behavior: smooth;
 }
 
 ::selection {
-  background: #e8542f;
-  color: #fdfcfa;
+  background: var(--color-flame);
+  color: var(--color-paper);
 }
-html, body {
-  background: #fdfcfa;
-  color: #221c17;
+
+html,
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
   color-scheme: light;
+}
+
+:root[data-theme="dark"],
+:root[data-theme="dark"] body {
+  color-scheme: dark;
+}
+
+/* Theme changes should feel like a switch, not a repaint. */
+html.theme-ready body {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 /* Keyboard users need to see where they are. Mouse clicks stay unchanged. */
 :focus-visible {
-  outline: 2px solid #e8542f;
+  outline: 2px solid var(--color-flame);
   outline-offset: 2px;
   border-radius: 2px;
 }

@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BuilderChat } from "@/components/BuilderChat";
 import { PublishButton } from "@/components/PublishButton";
-import { PaymentsToggle } from "@/components/PaymentsToggle";
+import { ThemeToggle, BuilderTheme } from "@/components/ThemeToggle";
 import { appHost } from "@/lib/site-url";
 
 export default async function Builder({
@@ -37,6 +37,7 @@ export default async function Builder({
 
   return (
     <main className="flex h-screen flex-col">
+      <BuilderTheme />
       <header className="flex items-center justify-between border-b border-line px-6 py-4">
         <div className="flex min-w-0 items-center gap-5">
           <Link
@@ -60,21 +61,20 @@ export default async function Builder({
           >
             responses
           </Link>
-          <PaymentsToggle
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <ThemeToggle />
+          <PublishButton
             projectId={project.id}
-            initialEnabled={project.payments_enabled ?? false}
-            stripeConnected={stripeConnected}
+            initialSlug={project.slug}
+            initialStatus={project.status}
+            appHost={appHost()}
+            pathRouting={
+              appHost().startsWith("localhost") ||
+              appHost().endsWith(".vercel.app")
+            }
           />
         </div>
-        <PublishButton
-          projectId={project.id}
-          initialSlug={project.slug}
-          initialStatus={project.status}
-          appHost={appHost()}
-          pathRouting={
-            appHost().startsWith("localhost") || appHost().endsWith(".vercel.app")
-          }
-        />
       </header>
 
       <BuilderChat
@@ -89,6 +89,8 @@ export default async function Builder({
         initialName={project.name}
         initialKind={project.kind}
         initialLogo={project.logo_url ?? null}
+        initialPaymentsEnabled={project.payments_enabled ?? false}
+        stripeConnected={stripeConnected}
       />
     </main>
   );

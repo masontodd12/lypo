@@ -3,10 +3,76 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { INTERVIEWS, INTERVIEW, type Question } from "@/lib/interviews";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 type Message = { role: "user" | "assistant"; content: string };
 
 const MIN_WORDS = 200;
+
+/** A real checkbox underneath, so it is keyboard and screen-reader native. */
+function Switch({
+  on,
+  onChange,
+  disabled = false,
+  label,
+}: {
+  on: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+  label: string;
+}) {
+  return (
+    <label
+      className={`inline-flex shrink-0 items-center ${
+        disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer"
+      }`}
+    >
+      <input
+        type="checkbox"
+        role="switch"
+        checked={on}
+        disabled={disabled}
+        onChange={onChange}
+        aria-label={label}
+        className="peer sr-only"
+      />
+      <span
+        aria-hidden="true"
+        className={`relative h-6 w-11 rounded-full transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-flame ${
+          on ? "bg-flame" : "bg-line"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-paper shadow-sm transition-transform ${
+            on ? "translate-x-5" : "translate-x-0"
+          }`}
+        />
+      </span>
+    </label>
+  );
+}
+
+function SettingRow({
+  title,
+  body,
+  control,
+}: {
+  title: string;
+  body: string;
+  control: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-xl border border-line bg-paper p-4">
+      <div className="min-w-0">
+        <p className="font-display text-sm font-semibold tracking-tight">
+          {title}
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-ink-soft">{body}</p>
+      </div>
+      <div className="shrink-0 pt-0.5">{control}</div>
+    </div>
+  );
+}
 
 const STYLES = [
   { id: "minimal", label: "minimal", blurb: "clean, airy, lots of white space", colors: ["#FFFFFF", "#F2F2F0", "#1A1A1A"], font: "font-sans", prompt: "Style: ultra-minimal. Generous white space, warm off-white background, one restrained accent used fewer than three times, elegant typography, no decoration." },
@@ -246,6 +312,8 @@ export function BuilderChat({
   initialName,
   initialKind,
   initialLogo,
+  initialPaymentsEnabled,
+  stripeConnected,
 }: {
   initialPages: Record<string, string> | null;
   initialMultiPage: boolean;
@@ -256,13 +324,18 @@ export function BuilderChat({
   initialName: string;
   initialKind: string | null;
   initialLogo: string | null;
+  initialPaymentsEnabled: boolean;
+  /** Whether the account has Stripe connected at all. */
+  stripeConnected: boolean;
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [html, setHtml] = useState(initialHtml ?? "");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<"preview" | "code">("preview");
+  const [tab, setTab] = useState<"preview" | "code" | "settings">("preview");
+  const [paymentsEnabled, setPaymentsEnabled] = useState(initialPaymentsEnabled);
+  const [settingsBusy, setSettingsBusy] = useState(false);
   const [step, setStep] = useState<
     | "setup"
     | "type"
@@ -489,11 +562,41 @@ export function BuilderChat({
   async function toggleMultiPage() {
     const next = !multiPage;
     setMultiPage(next);
-    const supabase = createClient();
-    await supabase
-      .from("projects")
-      .update({ multi_page: next })
-      .eq("id", projectId);
+    setSettingsBusy(true);
+    try {
+      const supabase = createClient();
+      const { error: dbError } = await supabase
+        .from("projects")
+        .update({ multi_page: next })
+        .eq("id", projectId);
+      // Put the switch back rather than showing a setting that did not save.
+      if (dbError) {
+        setMultiPage(!next);
+        setError("Couldn't save that setting. Try again.");
+      }
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
+
+  async function togglePayments() {
+    if (!stripeConnected) return;
+    const next = !paymentsEnabled;
+    setPaymentsEnabled(next);
+    setSettingsBusy(true);
+    try {
+      const supabase = createClient();
+      const { error: dbError } = await supabase
+        .from("projects")
+        .update({ payments_enabled: next })
+        .eq("id", projectId);
+      if (dbError) {
+        setPaymentsEnabled(!next);
+        setError("Couldn't save that setting. Try again.");
+      }
+    } finally {
+      setSettingsBusy(false);
+    }
   }
 
   // Mirrors currentPage so an in-flight generation can tell whether the
@@ -2108,17 +2211,6 @@ document.addEventListener("click", function (e) {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={toggleMultiPage}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                multiPage
-                  ? "border-flame bg-flame text-paper"
-                  : "border-line text-ink-soft hover:border-flame hover:text-flame"
-              }`}
-            >
-              {multiPage ? "multi-page on" : "multi-page off"}
-            </button>
-            <button
-              type="button"
               onClick={() => {
                 setEditMode((v) => !v);
                 setPicked(null);
@@ -2247,9 +2339,11 @@ document.addEventListener("click", function (e) {
         </form>
       </aside>
 
-      <section className="flex flex-1 min-h-0 flex-col bg-mist/60">
-        <div className="flex items-center gap-1 border-b border-line px-4 py-2">
-          {(["preview", "code"] as const).map((t) => (
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-mist/60">
+        {/* shrink-0 keeps this bar at its natural height. Without it the
+            flex column squeezes it and the controls clip under the header. */}
+        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line px-4 py-2">
+          {(["preview", "code", "settings"] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -2277,7 +2371,7 @@ document.addEventListener("click", function (e) {
                   {d}
                 </button>
               ))}
-            {html && (
+            {html && tab !== "settings" && (
               <button
                 type="button"
                 onClick={downloadHtml}
@@ -2288,7 +2382,9 @@ document.addEventListener("click", function (e) {
             )}
           </div>
         </div>
-        <div className="min-h-0 flex-1 p-4">
+        {/* A flex column, so the page tabs keep their height and the preview
+            gets the remaining space instead of overflowing past the bottom. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-4">
           {tab === "preview" ? (
             initialBuilding ? (
               // Nothing is shown until every page is finished.
@@ -2320,7 +2416,7 @@ document.addEventListener("click", function (e) {
             ) : hasSite ? (
               <>
               {multiPage && (
-                <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-mist/40 px-3 py-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-2">
                   {Object.keys(pages).length === 0 && (
                     <span className="text-xs text-faint">no pages yet</span>
                   )}
@@ -2351,7 +2447,7 @@ document.addEventListener("click", function (e) {
               {!html ? (
                 // This page exists but has not been written yet. Showing an
                 // empty iframe here is what made new pages look blank.
-                <div className="flex h-full items-center justify-center">
+                <div className="flex min-h-0 flex-1 items-center justify-center">
                   <p className="text-sm text-faint">
                     {busy
                       ? `Building the ${currentPage} page…`
@@ -2359,12 +2455,14 @@ document.addEventListener("click", function (e) {
                   </p>
                 </div>
               ) : device === "phone" ? (
-                <div className="flex h-full items-start justify-center overflow-hidden py-2">
+                <div className="flex min-h-0 flex-1 items-start justify-center overflow-hidden">
                   <iframe
                     srcDoc={previewHtml}
                     sandbox="allow-scripts allow-forms allow-same-origin"
                     title="Site preview (phone)"
-                    className="h-full w-[390px] shrink-0 rounded-[1.5rem] border-4 border-ink bg-paper shadow-lg"
+                    // Always light: this is the visitor's view of the site,
+                    // not Lypo's chrome, so it must not follow the editor theme.
+                    className="h-full w-[390px] shrink-0 rounded-[1.5rem] border-4 border-ink bg-white shadow-lg"
                   />
                 </div>
               ) : (
@@ -2372,21 +2470,93 @@ document.addEventListener("click", function (e) {
                   srcDoc={previewHtml}
                   sandbox="allow-scripts allow-forms allow-same-origin"
                   title="Site preview"
-                  className="h-full w-full rounded-lg border border-line bg-paper"
+                  // Always light, for the same reason as the phone preview.
+                  className="min-h-0 w-full flex-1 rounded-lg border border-line bg-white"
                 />
               )}
               </>
             ) : (
-              <div className="flex h-full items-center justify-center">
+              <div className="flex min-h-0 flex-1 items-center justify-center">
                 <p className="text-sm text-faint">
                   {busy ? "Building your first version…" : "Your site appears here."}
                 </p>
               </div>
             )
-          ) : (
-            <pre className="h-full overflow-auto rounded-lg border border-line bg-paper p-4 text-xs leading-relaxed">
+          ) : tab === "code" ? (
+            <pre className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-paper p-4 text-xs leading-relaxed">
               {html || "No code yet. Build something first."}
             </pre>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto max-w-lg space-y-3 pb-4">
+                <SettingRow
+                  title="payments"
+                  body={
+                    stripeConnected
+                      ? "Let this site take donations or payments. Money goes straight to your Stripe account."
+                      : "Connect Stripe in your account settings first. Until then this site cannot show payment buttons."
+                  }
+                  control={
+                    <Switch
+                      on={paymentsEnabled}
+                      disabled={!stripeConnected || settingsBusy}
+                      onChange={togglePayments}
+                      label="Accept payments on this site"
+                    />
+                  }
+                />
+
+                <SettingRow
+                  title="multi-page site"
+                  body="Off is one long scrolling page. On lets you add separate pages with a shared nav, like a menu or an about page."
+                  control={
+                    <Switch
+                      on={multiPage}
+                      disabled={settingsBusy || busy}
+                      onChange={toggleMultiPage}
+                      label="Multi-page site"
+                    />
+                  }
+                />
+
+                <SettingRow
+                  title="click to edit"
+                  body="Click any part of the preview to point at it, then describe the change you want to that piece."
+                  control={
+                    <Switch
+                      on={editMode}
+                      disabled={!html}
+                      onChange={() => setEditMode((v) => !v)}
+                      label="Click to edit"
+                    />
+                  }
+                />
+
+                <SettingRow
+                  title="appearance"
+                  body="Light or dark. This changes Lypo itself, not the site you are building."
+                  control={<ThemeToggle />}
+                />
+
+                <div className="rounded-xl border border-line bg-paper p-4">
+                  <p className="font-display text-sm font-semibold tracking-tight">
+                    your site&apos;s code
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                    Download the current page as a single HTML file. It works
+                    anywhere, with no Lypo account needed.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={downloadHtml}
+                    disabled={!html}
+                    className="mt-3 rounded-full border border-line px-4 py-2 text-xs font-medium text-ink-soft transition hover:border-flame hover:text-flame disabled:opacity-40"
+                  >
+                    download {currentPage}.html
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </section>
