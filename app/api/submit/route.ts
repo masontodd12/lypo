@@ -12,6 +12,19 @@ export async function OPTIONS() {
   return new NextResponse(null, { headers: CORS });
 }
 
+function escapeHtml(value: unknown): string {
+  const str =
+    value != null && typeof value === "object"
+      ? JSON.stringify(value)
+      : String(value ?? "");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export async function POST(request: Request) {
   try {
     const ip = clientIp(request);
@@ -65,8 +78,14 @@ export async function POST(request: Request) {
         .eq("id", projectId)
         .single();
       if (owner?.owner_email) {
+        // Submissions come from an open endpoint, so field names and values
+        // are attacker-controlled. Escape before they go anywhere near the
+        // owner's inbox.
         const rows = Object.entries(data)
-          .map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#6f6459;">${k}</td><td style="padding:4px 0;">${String(v)}</td></tr>`)
+          .map(
+            ([k, v]) =>
+              `<tr><td style="padding:4px 12px 4px 0;color:#6f6459;">${escapeHtml(k)}</td><td style="padding:4px 0;">${escapeHtml(v)}</td></tr>`,
+          )
           .join("");
         fetch("https://api.resend.com/emails", {
           method: "POST",
@@ -78,7 +97,7 @@ export async function POST(request: Request) {
             from: "Lypo <notifications@resend.dev>",
             to: owner.owner_email,
             subject: `New response on ${owner.name}`,
-            html: `<div style="font-family:sans-serif;"><h2>Someone responded on ${owner.name}</h2><table>${rows}</table><p style="color:#6f6459;font-size:13px;">View all responses in your Lypo dashboard.</p></div>`,
+            html: `<div style="font-family:sans-serif;"><h2>Someone responded on ${escapeHtml(owner.name)}</h2><table>${rows}</table><p style="color:#6f6459;font-size:13px;">View all responses in your Lypo dashboard.</p></div>`,
           }),
         }).catch(() => {});
       }

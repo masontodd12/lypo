@@ -41,11 +41,18 @@ export async function GET(
   );
 
   function escape(value: unknown) {
-    const str = String(value ?? "");
+    let str =
+      value != null && typeof value === "object"
+        ? JSON.stringify(value)
+        : String(value ?? "");
+    // Field names and values come from a public endpoint. A leading =, +,
+    // - or @ is run as a formula by Excel and Sheets, so defang it before
+    // the owner opens their own export.
+    if (/^[=+\-@\t\r]/.test(str)) str = `'${str}`;
     return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
   }
 
-  const header = ["submitted_at", ...columns].join(",");
+  const header = ["submitted_at", ...columns.map(escape)].join(",");
   const lines = rows.map((s) =>
     [
       new Date(s.created_at).toISOString(),

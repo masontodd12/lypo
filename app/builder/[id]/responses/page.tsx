@@ -5,6 +5,15 @@ import { BroadcastForm } from "@/components/BroadcastForm";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+// /api/submit is a public endpoint that stores whatever JSON it is given,
+// so a value here can be an object or array. React throws on those, which
+// would take the whole page down, so flatten anything non-primitive.
+function cellText(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 export default async function Responses({
   params,
 }: {
@@ -114,7 +123,7 @@ export default async function Responses({
                     </td>
                     {columns.map((col) => (
                       <td key={col} className="px-4 py-3">
-                        {s.data?.[col] ?? ""}
+                        {cellText(s.data?.[col])}
                       </td>
                     ))}
                   </tr>
