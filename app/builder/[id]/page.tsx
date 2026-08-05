@@ -38,31 +38,33 @@ export default async function Builder({
   return (
     <main className="flex h-screen flex-col">
       <BuilderTheme />
-      <header className="flex items-center justify-between border-b border-line px-6 py-4">
-        <div className="flex min-w-0 items-center gap-5">
+      <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+          {/* The wordmark already goes back to the dashboard, so on a phone
+              it stands in for the separate "projects" link. */}
           <Link
             href="/dashboard"
-            className="font-display shrink-0 text-sm font-semibold tracking-[0.4em]"
+            className="font-display shrink-0 text-sm font-semibold tracking-[0.3em] sm:tracking-[0.4em]"
           >
             LYPO<span className="text-flame">.</span>
           </Link>
           <Link
             href="/dashboard"
-            className="shrink-0 text-sm text-faint transition hover:text-flame"
+            className="hidden shrink-0 text-sm text-faint transition hover:text-flame sm:block"
           >
             ← projects
           </Link>
-          <span className="max-w-[16rem] truncate text-sm text-ink-soft">
+          <span className="truncate text-sm text-ink-soft sm:max-w-[16rem]">
             {project.name}
           </span>
           <Link
             href={`/builder/${id}/responses`}
-            className="shrink-0 text-sm text-ink-soft transition hover:text-flame"
+            className="hidden shrink-0 text-sm text-ink-soft transition hover:text-flame sm:block"
           >
             responses
           </Link>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <ThemeToggle />
           <PublishButton
             projectId={project.id}

@@ -356,6 +356,9 @@ export function BuilderChat({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"preview" | "code" | "settings">("preview");
+  // Which single pane is showing on a phone. Ignored from md up, where both
+  // panes are visible at once.
+  const [mobilePane, setMobilePane] = useState<"chat" | "site">("chat");
   const [paymentsEnabled, setPaymentsEnabled] = useState(initialPaymentsEnabled);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [step, setStep] = useState<
@@ -940,6 +943,9 @@ document.addEventListener("click", function (e) {
           if (targetPage === currentPageRef.current) {
             setHtml(data.html);
             setTab("preview");
+            // On a phone the panes are exclusive, so bring the result into
+            // view instead of leaving them staring at the chat.
+            setMobilePane("site");
           }
         }
         setMessages((prev) => [
@@ -1036,6 +1042,7 @@ document.addEventListener("click", function (e) {
       setCurrentPage("home");
       setHtml(homeHtml);
       setTab("preview");
+      setMobilePane("site");
       setBuildSeconds(Math.round((Date.now() - started) / 1000));
 
       if (failed.length > 0) {
@@ -1082,7 +1089,7 @@ document.addEventListener("click", function (e) {
 
   if (step === "setup") {
     return (
-      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-5 sm:p-8">
         <h2 className="font-display text-3xl font-semibold tracking-tight">
           what is it called<span className="text-flame">?</span>
         </h2>
@@ -1152,7 +1159,7 @@ document.addEventListener("click", function (e) {
   // ---------- STEP 0: what are we making ----------
   if (step === "type") {
     return (
-      <div className="flex flex-1 flex-col items-center overflow-y-auto p-8">
+      <div className="flex flex-1 flex-col items-center overflow-y-auto p-5 sm:p-8">
         <button
           type="button"
           onClick={() => setStep("setup")}
@@ -1199,7 +1206,7 @@ document.addEventListener("click", function (e) {
   // ---------- STEP 1: pick a vibe ----------
   if (step === "vibe") {
     return (
-      <div className="flex flex-1 flex-col items-center overflow-y-auto p-8">
+      <div className="flex flex-1 flex-col items-center overflow-y-auto p-5 sm:p-8">
         <button
           type="button"
           onClick={() => setStep("type")}
@@ -1357,7 +1364,7 @@ document.addEventListener("click", function (e) {
   // ---------- STEP 1.5: questions, or paste it all ----------
   if (step === "how") {
     return (
-      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-5 sm:p-8">
         <button
           type="button"
           onClick={() => setStep("vibe")}
@@ -1428,7 +1435,7 @@ document.addEventListener("click", function (e) {
   if (step === "paste") {
     const dumpLength = dump.trim().length;
     return (
-      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-5 sm:p-8">
         <button
           type="button"
           onClick={() => setStep("how")}
@@ -1509,7 +1516,7 @@ document.addEventListener("click", function (e) {
     const daysSet = hoursRows.filter((r) => r.closed || r.open.trim() || r.close.trim()).length;
 
     return (
-      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col overflow-y-auto p-8">
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col overflow-y-auto p-5 sm:p-8">
         <button
           type="button"
           onClick={() => setStep("paste")}
@@ -1652,7 +1659,7 @@ document.addEventListener("click", function (e) {
     // so its labels follow whatever this question is actually collecting.
     const noun = NOUNS[current.itemNoun ?? "item"];
     return (
-      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-5 sm:p-8">
         <button
           type="button"
           onClick={() => {
@@ -2017,7 +2024,7 @@ document.addEventListener("click", function (e) {
   // ---------- STEP 2.5: photos + build ----------
   if (step === "photos") {
     return (
-      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-8">
+      <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-5 sm:p-8">
         <button
           type="button"
           onClick={() => setStep(dump.trim() ? "review" : "describe")}
@@ -2112,7 +2119,7 @@ document.addEventListener("click", function (e) {
   // ---------- OLD describe step (kept off) ----------
   if (false) {
     return (
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col overflow-y-auto p-8">
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col overflow-y-auto p-5 sm:p-8">
         <button
           type="button"
           onClick={() => setStep("vibe")}
@@ -2193,8 +2200,32 @@ document.addEventListener("click", function (e) {
 
   // ---------- STEP 3: the builder ----------
   return (
-    <div className="flex flex-1 min-h-0 overflow-hidden">
-      <aside className="flex w-[36%] max-w-md min-h-0 flex-col border-r border-line p-5">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+      {/* On a phone there is not room for two panes side by side, so they
+          become one pane with a switch. Plenty of these owners have no
+          computer other than the phone in their hand. */}
+      <div className="flex shrink-0 gap-1 border-b border-line p-2 md:hidden">
+        {(["chat", "site"] as const).map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => setMobilePane(p)}
+            className={`flex-1 rounded-full px-4 py-2 text-xs font-medium transition ${
+              mobilePane === p
+                ? "bg-ink text-paper"
+                : "text-ink-soft hover:text-ink"
+            }`}
+          >
+            {p === "chat" ? "chat" : "your site"}
+          </button>
+        ))}
+      </div>
+
+      <aside
+        className={`${
+          mobilePane === "chat" ? "flex" : "hidden"
+        } min-h-0 w-full max-w-none flex-1 flex-col border-line p-4 md:flex md:w-[36%] md:max-w-md md:flex-none md:border-r md:p-5`}
+      >
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto text-sm">
           {messages.map((m, i) =>
             m.role === "user" ? (
@@ -2403,7 +2434,11 @@ document.addEventListener("click", function (e) {
         </form>
       </aside>
 
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-mist/60">
+      <section
+        className={`${
+          mobilePane === "site" ? "flex" : "hidden"
+        } min-h-0 min-w-0 flex-1 flex-col bg-mist/60 md:flex`}
+      >
         {/* shrink-0 keeps this bar at its natural height. Without it the
             flex column squeezes it and the controls clip under the header. */}
         <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line px-4 py-2">
@@ -2601,6 +2636,25 @@ document.addEventListener("click", function (e) {
                   body="Light or dark. This changes Lypo itself, not the site you are building."
                   control={<ThemeToggle />}
                 />
+
+                {/* The header link is hidden on phones, so keep a way in. */}
+                <a
+                  href={`/builder/${projectId}/responses`}
+                  className="flex items-center justify-between gap-4 rounded-xl border border-line bg-paper p-4 transition hover:border-flame"
+                >
+                  <span className="min-w-0">
+                    <span className="font-display block text-sm font-semibold tracking-tight">
+                      responses
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed text-ink-soft">
+                      Everything people have sent through the forms on your
+                      site, and a CSV you can download.
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-sm font-medium text-flame">
+                    open →
+                  </span>
+                </a>
 
                 <div className="rounded-xl border border-line bg-paper p-4">
                   <p className="font-display text-sm font-semibold tracking-tight">
