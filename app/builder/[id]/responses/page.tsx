@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BroadcastForm } from "@/components/BroadcastForm";
 import { LocalTime } from "@/components/LocalTime";
+import { SiteStats } from "@/components/SiteStats";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -30,10 +31,34 @@ export default async function Responses({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name")
+    .select("id, name, status")
     .eq("id", id)
     .single();
   if (!project) notFound();
+
+  // Both tables are best-effort: a database that has not run the analytics
+  // migrations should still render the responses table.
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+  const sinceDay = since.toISOString().slice(0, 10);
+
+  const [{ data: viewRows }, { data: eventRows }] = await Promise.all([
+    supabase
+      .from("site_views")
+      .select("day, count")
+      .eq("project_id", id)
+      .gte("day", sinceDay),
+    supabase
+      .from("site_events")
+      .select("event, count")
+      .eq("project_id", id)
+      .gte("day", sinceDay),
+  ]);
+
+  const taps: Record<string, number> = {};
+  for (const e of eventRows ?? []) {
+    taps[e.event] = (taps[e.event] ?? 0) + (e.count ?? 0);
+  }
 
   const { data: submissions } = await supabase
     .from("submissions")
@@ -95,6 +120,15 @@ export default async function Responses({
             </a>
           )}
         </div>
+
+        <SiteStats
+          views={(viewRows ?? []).map((v) => ({
+            day: String(v.day),
+            count: v.count ?? 0,
+          }))}
+          taps={taps}
+          published={project.status === "published"}
+        />
 
         <BroadcastForm projectId={id} emailCount={emailCount} />
 

@@ -105,6 +105,31 @@ export default async function PublicSite({
 (function () {
   var LYPO_PROJECT_ID = ${JSON.stringify(project.project_id)};
   var LYPO_SUBMIT = ${JSON.stringify(site + "/api/submit")};
+  var LYPO_EVENT = ${JSON.stringify(site + "/api/event")};
+
+  // ---------- what visitors tapped ----------
+  // A tap on the phone number or the map link is the signal that the site is
+  // actually doing its job, which a raw view count never shows.
+  function track(ev) {
+    try {
+      var body = JSON.stringify({ projectId: LYPO_PROJECT_ID, event: ev });
+      // Survives the page being replaced by the dialer or the maps app.
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(LYPO_EVENT, new Blob([body], { type: "application/json" }));
+      } else {
+        fetch(LYPO_EVENT, { method: "POST", headers: { "content-type": "application/json" }, body: body, keepalive: true });
+      }
+    } catch (e) {}
+  }
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest("a");
+    if (!a) return;
+    var href = (a.getAttribute("href") || "").toLowerCase();
+    if (href.indexOf("tel:") === 0) return track("call");
+    if (href.indexOf("maps.google") > -1 || href.indexOf("google.com/maps") > -1) return track("directions");
+    if (a.hasAttribute("data-lypo-page") || /menu/.test(a.textContent || "")) return track("menu");
+    if (/instagram|facebook|tiktok|twitter|x\.com|youtube/.test(href)) return track("social");
+  }, true);
   var LYPO_STORE = ${JSON.stringify(site + "/api/store")};
 
   // ---------- lypo.storage: persistence for web apps ----------

@@ -59,6 +59,27 @@ export default async function PublicSubPage({
 (function () {
   var LYPO_PROJECT_ID = ${JSON.stringify(project.project_id)};
   var LYPO_SUBMIT = ${JSON.stringify(site + "/api/submit")};
+  var LYPO_EVENT = ${JSON.stringify(site + "/api/event")};
+
+  // See the single-page renderer: taps are what tell an owner the site works.
+  function track(ev) {
+    try {
+      var body = JSON.stringify({ projectId: LYPO_PROJECT_ID, event: ev });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(LYPO_EVENT, new Blob([body], { type: "application/json" }));
+      } else {
+        fetch(LYPO_EVENT, { method: "POST", headers: { "content-type": "application/json" }, body: body, keepalive: true });
+      }
+    } catch (e) {}
+  }
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest("a");
+    if (!a) return;
+    var href = (a.getAttribute("href") || "").toLowerCase();
+    if (href.indexOf("tel:") === 0) return track("call");
+    if (href.indexOf("maps.google") > -1 || href.indexOf("google.com/maps") > -1) return track("directions");
+    if (/instagram|facebook|tiktok|twitter|x\.com|youtube/.test(href)) return track("social");
+  }, true);
   var LYPO_STORE = ${JSON.stringify(site + "/api/store")};
 
   document.addEventListener("click", function (e) {

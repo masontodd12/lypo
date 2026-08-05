@@ -90,3 +90,48 @@ grant execute on function increment_site_view(uuid) to anon, authenticated;
 -- Without this the answers only lived in the browser, so closing the tab or
 -- taking a call partway through threw all of it away.
 alter table projects add column if not exists onboarding_draft jsonb;
+
+-- ---------- what visitors actually did ----------
+-- A view count alone does not tell an owner whether the site is working.
+-- Taps on the phone number or the map link are the ones that mean someone
+-- is about to walk in the door.
+create table if not exists site_events (
+  project_id uuid not null references projects(id) on delete cascade,
+  day date not null default current_date,
+  event text not null,
+  count integer not null default 0,
+  primary key (project_id, day, event)
+);
+
+alter table site_events enable row level security;
+
+create policy "owners read own events" on site_events
+  for select using (
+    exists (
+      select 1 from projects
+      where projects.id = site_events.project_id
+        and projects.user_id = auth.uid()
+    )
+  );
+
+-- Same pattern as increment_site_view: public sites bump the counter through
+-- this function, so anon never needs write access to the table.
+create or replace function increment_site_event(pid uuid, ev text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- Fixed vocabulary, so a public caller cannot fill the table with junk.
+  if ev not in ('call', 'directions', 'menu', 'social', 'pay') then
+    return;
+  end if;
+  insert into site_events (project_id, day, event, count)
+  values (pid, current_date, ev, 1)
+  on conflict (project_id, day, event)
+  do update set count = site_events.count + 1;
+end;
+$$;
+
+grant execute on function increment_site_event(uuid, text) to anon, authenticated;
