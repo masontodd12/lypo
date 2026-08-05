@@ -35,6 +35,15 @@ export default async function Builder({
     .maybeSingle();
   const stripeConnected = !!stripeAccount?.account_id;
 
+  // Fetched on its own so the builder still loads on a database that has not
+  // had the onboarding_draft migration applied yet. Selecting a column that
+  // does not exist fails the whole row, which would 404 the page.
+  const { data: draftRow } = await supabase
+    .from("projects")
+    .select("onboarding_draft")
+    .eq("id", id)
+    .maybeSingle();
+
   return (
     <main className="flex h-screen flex-col">
       <BuilderTheme />
@@ -93,6 +102,7 @@ export default async function Builder({
         initialLogo={project.logo_url ?? null}
         initialPaymentsEnabled={project.payments_enabled ?? false}
         stripeConnected={stripeConnected}
+        initialDraft={draftRow?.onboarding_draft ?? null}
       />
     </main>
   );

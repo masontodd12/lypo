@@ -7,6 +7,27 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 type Message = { role: "user" | "assistant"; content: string };
 
+/**
+ * Everything the interview collects before the first build. Persisted to the
+ * project so closing the tab partway through does not throw it away.
+ */
+type OnboardingDraft = {
+  step?: string;
+  siteType?: string | null;
+  vibe?: string | null;
+  kind?: string;
+  projectName?: string;
+  qIndex?: number;
+  answers?: string[];
+  menuRows?: MenuRow[];
+  hoursRows?: HourRow[];
+  photos?: string[];
+  logo?: string | null;
+  dump?: string;
+  leftover?: string;
+  guessed?: number[];
+};
+
 const MIN_WORDS = 200;
 
 /** A real checkbox underneath, so it is keyboard and screen-reader native. */
@@ -336,6 +357,7 @@ export function BuilderChat({
   initialLogo,
   initialPaymentsEnabled,
   stripeConnected,
+  initialDraft,
 }: {
   initialPages: Record<string, string> | null;
   initialMultiPage: boolean;
@@ -349,6 +371,8 @@ export function BuilderChat({
   initialPaymentsEnabled: boolean;
   /** Whether the account has Stripe connected at all. */
   stripeConnected: boolean;
+  /** Saved onboarding answers, so a half-finished interview survives. */
+  initialDraft: OnboardingDraft | null;
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [html, setHtml] = useState(initialHtml ?? "");
@@ -361,7 +385,9 @@ export function BuilderChat({
   const [mobilePane, setMobilePane] = useState<"chat" | "site">("chat");
   const [paymentsEnabled, setPaymentsEnabled] = useState(initialPaymentsEnabled);
   const [settingsBusy, setSettingsBusy] = useState(false);
-  const [step, setStep] = useState<
+  // A built site means onboarding is long over, so a stale draft is ignored.
+  const draft = initialHtml ? null : initialDraft;
+  type Step =
     | "setup"
     | "type"
     | "vibe"
@@ -370,36 +396,82 @@ export function BuilderChat({
     | "review"
     | "describe"
     | "photos"
-    | "build"
-  >(initialHtml ? "build" : "setup");
-  const [siteType, setSiteType] = useState<string | null>(null);
-  const [projectName, setProjectName] = useState(
-    initialName === "untitled" ? "" : initialName,
+    | "build";
+  const [step, setStep] = useState<Step>(
+    initialHtml ? "build" : ((draft?.step as Step) ?? "setup"),
   );
-  const [kind, setKind] = useState<string>(initialKind ?? "website");
-  const [vibe, setVibe] = useState<string | null>(null);
+  const [siteType, setSiteType] = useState<string | null>(
+    draft?.siteType ?? null,
+  );
+  const [projectName, setProjectName] = useState(
+    draft?.projectName ?? (initialName === "untitled" ? "" : initialName),
+  );
+  const [kind, setKind] = useState<string>(
+    draft?.kind ?? initialKind ?? "website",
+  );
+  const [vibe, setVibe] = useState<string | null>(draft?.vibe ?? null);
   const [description, setDescription] = useState(initialIdea ?? "");
-  const [qIndex, setQIndex] = useState(0);
-  const [answers, setAnswers] = useState<string[]>([]);
-  const [answerDraft, setAnswerDraft] = useState("");
-  const [logo, setLogo] = useState<string | null>(initialLogo ?? null);
+  const [qIndex, setQIndex] = useState(draft?.qIndex ?? 0);
+  const [answers, setAnswers] = useState<string[]>(draft?.answers ?? []);
+  const [answerDraft, setAnswerDraft] = useState(
+    draft?.answers?.[draft?.qIndex ?? 0] ?? "",
+  );
+  const [logo, setLogo] = useState<string | null>(
+    initialLogo ?? draft?.logo ?? null,
+  );
   const [logoBusy, setLogoBusy] = useState(false);
-  const [menuRows, setMenuRows] = useState<MenuRow[]>([
-    { kind: "section", label: "" },
-    { kind: "item", name: "", price: "" },
-  ]);
-  const [hoursRows, setHoursRows] = useState<HourRow[]>(emptyHours());
+  const [menuRows, setMenuRows] = useState<MenuRow[]>(
+    draft?.menuRows?.length
+      ? draft.menuRows
+      : [
+          { kind: "section", label: "" },
+          { kind: "item", name: "", price: "" },
+        ],
+  );
+  const [hoursRows, setHoursRows] = useState<HourRow[]>(
+    draft?.hoursRows?.length ? draft.hoursRows : emptyHours(),
+  );
   const [pasting, setPasting] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pasteNote, setPasteNote] = useState("");
 
   // ---- paste-everything path ----
-  const [dump, setDump] = useState("");
+  const [dump, setDump] = useState(draft?.dump ?? "");
   const [dumpBusy, setDumpBusy] = useState(false);
   const [dumpError, setDumpError] = useState("");
-  const [guessed, setGuessed] = useState<number[]>([]);
-  const [leftover, setLeftover] = useState("");
+  const [guessed, setGuessed] = useState<number[]>(draft?.guessed ?? []);
+  const [leftover, setLeftover] = useState(draft?.leftover ?? "");
   const [reviewIndex, setReviewIndex] = useState<number | null>(null);
+
+  // Snapshot the interview so far. Best-effort: if the column is missing or
+  // the write fails, onboarding still works, it just is not resumable.
+  const draftRef = useRef<OnboardingDraft>({ ...(draft ?? {}) });
+  async function saveDraft(patch: OnboardingDraft) {
+    if (html) return; // Nothing to resume once a site exists.
+    draftRef.current = { ...draftRef.current, ...patch };
+    try {
+      const supabase = createClient();
+      await supabase
+        .from("projects")
+        .update({ onboarding_draft: draftRef.current })
+        .eq("id", projectId);
+    } catch {
+      // Draft saving is a convenience, never a blocker.
+    }
+  }
+
+  async function clearDraft() {
+    try {
+      const supabase = createClient();
+      await supabase
+        .from("projects")
+        .update({ onboarding_draft: null })
+        .eq("id", projectId);
+    } catch {
+      // Leaving a stale draft behind is harmless: it is ignored once the
+      // project has html.
+    }
+  }
 
   function applyPastedMenu() {
     const parsed = parseMenuText(pasteText);
@@ -452,7 +524,7 @@ export function BuilderChat({
 
   // Which interview to run. Restaurants get restaurant questions.
   const interview: Question[] = INTERVIEWS[siteType ?? ""] ?? INTERVIEW;
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<string[]>(draft?.photos ?? []);
   const [uploading, setUploading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [listening, setListening] = useState(false);
@@ -883,7 +955,13 @@ document.addEventListener("click", function (e) {
         continue;
       }
       const { data } = supabase.storage.from("uploads").getPublicUrl(path);
-      if (data?.publicUrl) setPhotos((prev) => [...prev, data.publicUrl]);
+      if (data?.publicUrl) {
+        setPhotos((prev) => {
+          const next = [...prev, data.publicUrl];
+          saveDraft({ photos: next });
+          return next;
+        });
+      }
     }
     setUploading(false);
   }
@@ -1043,6 +1121,8 @@ document.addEventListener("click", function (e) {
       setHtml(homeHtml);
       setTab("preview");
       setMobilePane("site");
+      // The site exists now, so the saved interview has nothing left to resume.
+      clearDraft();
       setBuildSeconds(Math.round((Date.now() - started) / 1000));
 
       if (failed.length > 0) {
@@ -1085,6 +1165,7 @@ document.addEventListener("click", function (e) {
       .update({ name, kind })
       .eq("id", projectId);
     setStep("type");
+    saveDraft({ step: "type", projectName: name, kind });
   }
 
   if (step === "setup") {
@@ -1182,6 +1263,7 @@ document.addEventListener("click", function (e) {
               onClick={() => {
                 setSiteType(type.id);
                 setStep("vibe");
+                saveDraft({ step: "vibe", siteType: type.id });
               }}
               className="rounded-xl border border-line bg-paper p-5 text-left transition hover:border-flame"
             >
@@ -1229,6 +1311,7 @@ document.addEventListener("click", function (e) {
               onClick={() => {
                 setVibe(style.id);
                 setStep("how");
+                saveDraft({ step: "how", vibe: style.id });
               }}
               className="group rounded-xl border border-line bg-paper p-5 text-left transition hover:border-flame"
             >
@@ -1285,6 +1368,7 @@ document.addEventListener("click", function (e) {
     const tail = extra.trim() ? `\n\nalso worth knowing: ${extra.trim()}` : "";
     setDescription(`${initialIdea ? initialIdea + ". " : ""}${combined}${tail}`);
     setStep("photos");
+    saveDraft({ step: "photos", answers: final, leftover: extra });
   }
 
   function nextQuestion() {
@@ -1301,12 +1385,20 @@ document.addEventListener("click", function (e) {
     if (reviewIndex !== null) {
       setReviewIndex(null);
       setStep("review");
+      saveDraft({ step: "review", answers: updated, menuRows, hoursRows });
       return;
     }
 
     setAnswerDraft(updated[qIndex + 1] ?? "");
     if (qIndex < interview.length - 1) {
       setQIndex(qIndex + 1);
+      saveDraft({
+        step: "describe",
+        qIndex: qIndex + 1,
+        answers: updated,
+        menuRows,
+        hoursRows,
+      });
     } else {
       finishInterview(updated);
     }
@@ -1354,6 +1446,13 @@ document.addEventListener("click", function (e) {
 
       setReviewIndex(null);
       setStep("review");
+      saveDraft({
+        step: "review",
+        answers: next,
+        dump: text,
+        leftover: data.leftover ?? "",
+        guessed: data.guessed ?? [],
+      });
     } catch {
       setDumpError("Couldn't reach the server. Check your connection.");
     } finally {

@@ -84,3 +84,9 @@ end;
 $$;
 
 grant execute on function increment_site_view(uuid) to anon, authenticated;
+
+-- ---------- onboarding draft ----------
+-- The interview runs five to seven questions before anything is generated.
+-- Without this the answers only lived in the browser, so closing the tab or
+-- taking a call partway through threw all of it away.
+alter table projects add column if not exists onboarding_draft jsonb;
