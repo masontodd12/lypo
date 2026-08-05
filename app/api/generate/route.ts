@@ -38,6 +38,8 @@ REQUIRED:
 - Mobile-first CSS, no horizontal scroll at 320px, type scales with clamp().
 - Colors, fonts, spacing as CSS custom properties in :root.
 - <title>, <meta name="description">, Open Graph tags (og:title, og:description, og:image using the first real photo if one exists, og:type), twitter card tags, viewport meta, lang attribute. These control how the link looks when texted, which is how these sites get shared.
+- A favicon, always. With a logo, use it: <link rel="icon" href="LOGO_URL">. Without one, inline an SVG data URI showing the business's initial in the accent color on the page background, for example <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23ACCENT'/%3E%3Ctext x='16' y='22' font-family='Georgia,serif' font-size='18' fill='%23FFFFFF' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E"> with the real initial and a real hex. A blank browser tab is one of the clearest signs a site was thrown together.
+- A canonical link tag pointing at the page's own address, so search engines index one copy rather than treating variants as duplicates.
 - Every site has a real <footer>: org/business name with a copyright line, a repeat of essential contact info (phone/address) if given, and links to any other pages or socials that exist. A footer that's just a copyright line when there's more real info to put there looks unfinished.
 - Interactive elements (buttons, links, inputs) have a visible hover/focus state distinct from their resting state. A flat, static-feeling control is one of the clearest "unfinished template" tells on a real device.
 
@@ -266,7 +268,7 @@ export async function POST(request: Request) {
   // size, on every page, and it makes a good og:image.
   const logoRule =
     typeof logoUrl === "string" && /^https?:\/\//.test(logoUrl)
-      ? `\n\nLOGO: this site has a logo at ${logoUrl}. Put it in the site header on every page as an <img> with meaningful alt text (the business name). Constrain it with max-height between 32px and 56px and width:auto so it is never stretched or distorted. Do not put it in a photo gallery, do not repeat it down the page, and do not use it as a background. Use this same URL for og:image unless a better photo exists.`
+      ? `\n\nLOGO: this site has a logo at ${logoUrl}. Put it in the site header on every page as an <img> with meaningful alt text (the business name). Constrain it with max-height between 32px and 56px and width:auto so it is never stretched or distorted. Do not put it in a photo gallery, do not repeat it down the page, and do not use it as a background. Use this same URL for og:image unless a better photo exists, and for the favicon: <link rel="icon" href="${logoUrl}">.`
       : "";
 
   const finalPrompt =
