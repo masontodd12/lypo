@@ -4,8 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ProjectCard } from "@/components/ProjectCard";
 import { siteUrlFor } from "@/lib/site-url";
+import { projectAllowance } from "@/lib/limits";
 
-export default async function Dashboard() {
+export default async function Dashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ limit?: string }>;
+}) {
+  const { limit } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -32,6 +38,7 @@ export default async function Dashboard() {
     }
   }
 
+  const allowance = await projectAllowance(supabase, user.id);
   const total = projects?.length ?? 0;
   const publishedCount =
     projects?.filter((p) => p.status === "published").length ?? 0;
@@ -80,14 +87,46 @@ export default async function Dashboard() {
             >
               archive
             </Link>
-            <Link
-              href="/onboarding"
-              className="border-b-2 border-ink pb-1 font-medium transition hover:border-flame hover:text-flame"
-            >
-              new project →
-            </Link>
+            {allowance.reached ? (
+              <span
+                title={`Resets ${allowance.resetsOn}`}
+                className="border-b-2 border-line pb-1 font-medium text-faint"
+              >
+                new project
+              </span>
+            ) : (
+              <Link
+                href="/onboarding"
+                className="border-b-2 border-ink pb-1 font-medium transition hover:border-flame hover:text-flame"
+              >
+                new project →
+              </Link>
+            )}
           </div>
         </div>
+
+        {/* Someone bounced off the cap on their way into onboarding. */}
+        {limit === "projects" && allowance.reached && (
+          <div className="mt-8 rounded-xl border border-flame/40 bg-flame/5 p-5">
+            <p className="font-display text-sm font-semibold tracking-tight">
+              that is {allowance.limit} sites this month
+            </p>
+            <p className="mt-1 text-sm text-ink-soft">
+              You can start another on {allowance.resetsOn}. Until then you can
+              keep editing and publishing everything you have already built,
+              with no limit on changes.
+            </p>
+          </div>
+        )}
+
+        {/* Quiet until it matters, so it reads as a heads-up, not a paywall. */}
+        {!allowance.reached && allowance.remaining <= 2 && (
+          <p className="mt-6 text-sm text-ink-soft">
+            {allowance.remaining} new site{allowance.remaining === 1 ? "" : "s"}{" "}
+            left this month. Resets {allowance.resetsOn}. Editing what you have
+            is unlimited.
+          </p>
+        )}
 
         {!projects || projects.length === 0 ? (
           <div className="mt-16 max-w-md">

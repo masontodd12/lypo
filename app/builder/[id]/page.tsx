@@ -3,7 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BuilderChat } from "@/components/BuilderChat";
 import { PublishButton } from "@/components/PublishButton";
-import { ThemeToggle, BuilderTheme } from "@/components/ThemeToggle";
+import {
+  ThemeToggle,
+  BuilderTheme,
+  THEME_INIT_SCRIPT,
+} from "@/components/ThemeToggle";
 import { appHost } from "@/lib/site-url";
 
 export default async function Builder({
@@ -46,6 +50,12 @@ export default async function Builder({
 
   return (
     <main className="flex h-screen flex-col">
+      {/* Runs before the builder paints, so opening it in dark mode does not
+          flash white. Only the builder is themeable, so this stays here
+          rather than in the root layout where it would ship on every
+          marketing page and never do anything. BuilderTheme then covers
+          client-side navigation into the builder. */}
+      <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       <BuilderTheme />
       <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex min-w-0 items-center gap-3 sm:gap-5">

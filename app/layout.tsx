@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Sora, Inter } from "next/font/google";
 import "./globals.css";
 import { appOrigin } from "@/lib/site-url";
-import { THEME_INIT_SCRIPT } from "@/components/ThemeToggle";
 
 const sora = Sora({
   subsets: ["latin"],
@@ -45,10 +44,6 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        {/* Sets the theme before first paint so dark mode never flashes white. */}
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-      </head>
       <body className={`${sora.variable} ${inter.variable} antialiased`}>
         {children}
       </body>

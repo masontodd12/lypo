@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { projectAllowance } from "@/lib/limits";
 
 export default async function Onboarding({
   searchParams,
@@ -18,6 +19,11 @@ export default async function Onboarding({
     if (idea) params.set("idea", idea);
     redirect(`/login?${params.toString()}`);
   }
+
+  // Starting a site is what costs money, so that is where the ceiling sits.
+  // Editing an existing one is unlimited.
+  const allowance = await projectAllowance(supabase, user.id);
+  if (allowance.reached) redirect("/dashboard?limit=projects");
 
   const name = idea
     ? idea.slice(0, 40).replace(/\s+\S*$/, "") || "untitled"

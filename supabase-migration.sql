@@ -105,6 +105,9 @@ create table if not exists site_events (
 
 alter table site_events enable row level security;
 
+-- Dropped first so this whole section can be re-run safely; create policy
+-- errors rather than no-opping when the policy is already there.
+drop policy if exists "owners read own events" on site_events;
 create policy "owners read own events" on site_events
   for select using (
     exists (

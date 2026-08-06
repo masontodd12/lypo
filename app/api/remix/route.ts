@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { projectAllowance } from "@/lib/limits";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -8,6 +9,17 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Sign in to remix" }, { status: 401 });
+  }
+
+  // A remix creates a new project, so it draws from the same allowance.
+  const allowance = await projectAllowance(supabase, user.id);
+  if (allowance.reached) {
+    return NextResponse.json(
+      {
+        error: `You've started ${allowance.limit} sites this month. Your next one unlocks ${allowance.resetsOn}.`,
+      },
+      { status: 429 },
+    );
   }
 
   const { projectId } = await request.json();

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-const DAILY_LIMIT = 30;
 const MODEL = "gpt-5-mini";
 const VERSIONS_KEPT = 30;
 
@@ -34,6 +33,8 @@ FORBIDDEN (these are the signature of AI-generated sites, never produce them):
 REQUIRED:
 - Semantic HTML: one <h1>, heading levels never skip, <header>/<main>/<section>/<footer>, buttons and links are real <button>/<a>, never clickable divs.
 - Every <img> gets alt text describing its actual content; decorative images get alt="".
+- Every <img> also gets loading="lazy" and decoding="async", except one image inside the hero, which stays eager so it paints immediately. Uploaded photos come straight off a phone camera, so without this a visitor on mobile data waits on all of them at once.
+- Every <img> gets width and height attributes, or an explicit aspect-ratio in CSS, so the layout does not jump around as photos arrive. Pair that with object-fit:cover so a portrait photo in a landscape slot is cropped rather than squashed.
 - Body text contrast 4.5:1 minimum. Visible :focus-visible outline. Tap targets 44px minimum.
 - Mobile-first CSS, no horizontal scroll at 320px, type scales with clamp().
 - Colors, fonts, spacing as CSS custom properties in :root.
@@ -176,7 +177,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  // ----- Daily usage limit -----
+  // Editing is not capped. The ceiling is on starting new sites (see
+  // lib/limits.ts), so someone can keep working on their site until it is
+  // right rather than running out of edits partway through.
   const today = new Date().toISOString().slice(0, 10);
   const { data: usage } = await supabase
     .from("usage")
@@ -184,16 +187,7 @@ export async function POST(request: Request) {
     .eq("user_id", user.id)
     .eq("day", today)
     .maybeSingle();
-
   const used = usage?.count ?? 0;
-  if (used >= DAILY_LIMIT) {
-    return NextResponse.json(
-      {
-        error: `You've used today's ${DAILY_LIMIT} edits. They reset tomorrow.`,
-      },
-      { status: 429 },
-    );
-  }
 
   // ----- Build the conversation -----
   const history: { role: "user" | "assistant"; content: string }[] =
@@ -402,6 +396,5 @@ export async function POST(request: Request) {
   return NextResponse.json({
     html,
     summary,
-    remaining: DAILY_LIMIT - used - 1,
   });
 }
