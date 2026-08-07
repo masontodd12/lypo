@@ -39,6 +39,9 @@ async function callOnce(
   system: string,
   messages: Message[],
   maxTokens: number,
+  // A patch reply is a set of blocks, not a document, so the completeness
+  // check that guards full generations does not apply to it.
+  { requireCompleteHtml = true }: { requireCompleteHtml?: boolean } = {},
 ): Promise<
   | { kind: "ok"; raw: string }
   | { kind: "empty" | "truncated" | "http"; detail: string }
@@ -68,20 +71,90 @@ async function callOnce(
   // gpt-5-mini spends part of the budget on reasoning before emitting
   // anything, so a budget that runs out shows up as no content at all.
   if (!raw) return { kind: "empty", detail: `finish=${finish} usage=${usage}` };
-  if (finish === "length" || !isComplete(parse(raw).html)) {
+  if (
+    finish === "length" ||
+    (requireCompleteHtml && !isComplete(parse(raw).html))
+  ) {
     return { kind: "truncated", detail: `finish=${finish} usage=${usage}` };
   }
   return { kind: "ok", raw };
 }
 
 /**
- * Generates a page, retrying before giving up.
- *
- * Most failures here are the budget running out rather than the model being
- * incapable, so the retry raises the ceiling first and only then reaches for
- * a stronger model. Every attempt is all-or-nothing: a truncated document is
- * discarded rather than saved over someone's working page.
+ * Instructions that replace the "return the FULL updated document" contract
+ * for edits. Re-emitting a 40KB page to change a phone number is slow, costs
+ * output tokens in proportion to the page rather than the change, and is the
+ * main way a generation runs into the token ceiling.
  */
+export const PATCH_CONTRACT = `
+YOU ARE EDITING AN EXISTING PAGE. Do NOT return the whole document.
+
+Return ONLY the parts that change, as one or more blocks in exactly this form:
+
+<<<<<<< SEARCH
+(text copied character for character from the current page)
+=======
+(what it should say instead)
+>>>>>>> REPLACE
+
+Rules that make this work:
+- The SEARCH text must appear in the current page EXACTLY, including tags,
+  indentation and spacing. Copy it, do not retype it from memory.
+- Include enough surrounding text that the SEARCH appears exactly once. If a
+  string like "Contact" appears several times, take the whole element.
+- To delete something, leave the REPLACE side empty.
+- To add something, SEARCH for the element you want to add next to and put
+  both it and the new content in REPLACE.
+- Use as many blocks as you need, but only for parts that actually change.
+- Change nothing the user did not ask about. Everything you do not touch
+  stays exactly as it is, which is the point of editing this way.
+
+Before the first block, put the summary comment on its own line:
+<!--summary: one short friendly sentence describing what you changed-->
+`.trim();
+
+export type Patch = { search: string; replace: string };
+
+/** Pulls the search/replace blocks out of a model reply. */
+export function parsePatches(raw: string): Patch[] {
+  const blocks: Patch[] = [];
+  const re =
+    /<{5,9}\s*SEARCH\s*\n([\s\S]*?)\n?={5,9}\s*\n([\s\S]*?)\n?>{5,9}\s*REPLACE/g;
+  let m;
+  while ((m = re.exec(raw)) !== null) {
+    blocks.push({ search: m[1], replace: m[2] });
+  }
+  return blocks;
+}
+
+export type ApplyResult =
+  | { ok: true; html: string }
+  | { ok: false; reason: string };
+
+/**
+ * Applies patches to the current page.
+ *
+ * Every block must match exactly once. A block that matches nothing means
+ * the model invented the text it claimed to be replacing, and one that
+ * matches twice means the edit is ambiguous; either way the whole patch is
+ * rejected rather than guessing at someone's live site.
+ */
+export function applyPatches(html: string, patches: Patch[]): ApplyResult {
+  if (patches.length === 0) return { ok: false, reason: "no blocks" };
+
+  let out = html;
+  for (const [i, p] of patches.entries()) {
+    if (!p.search.trim()) return { ok: false, reason: `block ${i + 1} empty` };
+    const first = out.indexOf(p.search);
+    if (first === -1) return { ok: false, reason: `block ${i + 1} not found` };
+    if (out.indexOf(p.search, first + 1) !== -1) {
+      return { ok: false, reason: `block ${i + 1} matched more than once` };
+    }
+    out = out.slice(0, first) + p.replace + out.slice(first + p.search.length);
+  }
+  return { ok: true, html: out };
+}
+
 async function streamOnce(
   model: string,
   system: string,
@@ -187,6 +260,110 @@ export async function generatePageStreamed({
   return { ...retried, attempts: retried.attempts + 1 };
 }
 
+/**
+ * Edits an existing page by patch, falling back to a full rewrite.
+ *
+ * The fallback matters: a patch that does not apply cleanly is rejected
+ * outright, and the user asked for a change, so the safe answer is to do it
+ * the slow reliable way rather than to report a failure they cannot act on.
+ */
+export async function editPage({
+  system,
+  currentHtml,
+  instruction,
+  history,
+  pageName,
+  maxTokens = 16000,
+  onDelta,
+}: {
+  system: string;
+  currentHtml: string;
+  instruction: string;
+  history: Message[];
+  pageName: string;
+  maxTokens?: number;
+  onDelta?: (text: string) => void;
+}): Promise<ModelResult & { patched?: boolean }> {
+  const patchMessages: Message[] = [
+    ...history,
+    {
+      role: "user",
+      content: `Current page ("${pageName}"):\n${currentHtml}\n\nRequested change: ${instruction}`,
+    },
+  ];
+
+  try {
+    const attempt = await callOnce(
+      MODEL,
+      `${system}\n\n${PATCH_CONTRACT}`,
+      patchMessages,
+      // Patches are small, so a page-sized ceiling is unnecessary. Keeping
+      // it lower also stops a model that ignores the contract and starts
+      // re-emitting the document from burning the full budget.
+      Math.min(maxTokens, 6000),
+      { requireCompleteHtml: false },
+    );
+
+    if (attempt.kind === "ok") {
+      const patches = parsePatches(attempt.raw);
+      const applied = applyPatches(currentHtml, patches);
+      if (applied.ok) {
+        const summaryMatch = attempt.raw.match(
+          /<!--\s*summary:\s*([\s\S]*?)-->/i,
+        );
+        return {
+          ok: true,
+          html: applied.html,
+          summary: summaryMatch ? summaryMatch[1].trim() : "Done. Take a look.",
+          attempts: 1,
+          model: MODEL,
+          patched: true,
+        };
+      }
+      // Some replies ignore the contract and return the whole document
+      // anyway. That is a usable answer, so take it rather than paying for
+      // another call to ask again.
+      const whole = parse(attempt.raw);
+      if (patches.length === 0 && isComplete(whole.html)) {
+        return {
+          ok: true,
+          html: whole.html,
+          summary: whole.summary,
+          attempts: 1,
+          model: MODEL,
+          patched: false,
+        };
+      }
+      console.error("patch rejected, rewriting instead:", applied.reason);
+    } else {
+      console.error("patch attempt failed:", attempt.kind, attempt.detail);
+    }
+  } catch (e) {
+    console.error("patch attempt threw:", e);
+  }
+
+  // Full rewrite, the way edits worked before patches existed.
+  const full: Message[] = [
+    ...history,
+    {
+      role: "user",
+      content: `Current page ("${pageName}") HTML:\n${currentHtml}\n\nRequested change: ${instruction}`,
+    },
+  ];
+  const rewritten = onDelta
+    ? await generatePageStreamed({ system, messages: full, maxTokens, onDelta })
+    : await generatePage({ system, messages: full, maxTokens });
+  return { ...rewritten, patched: false };
+}
+
+/**
+ * Generates a page, retrying before giving up.
+ *
+ * Most failures here are the budget running out rather than the model being
+ * incapable, so the retry raises the ceiling first and only then reaches for
+ * a stronger model. Every attempt is all-or-nothing: a truncated document is
+ * discarded rather than saved over someone's working page.
+ */
 export async function generatePage({
   system,
   messages,
@@ -233,6 +410,7 @@ export async function generatePage({
     }
   }
 
+  console.error(`generate gave up after ${plan.length} attempts, last: ${last}`);
   return {
     ok: false,
     attempts: plan.length,

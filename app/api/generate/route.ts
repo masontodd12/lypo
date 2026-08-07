@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { generatePageStreamed } from "@/lib/model";
+import { editPage, generatePageStreamed } from "@/lib/model";
 
 const VERSIONS_KEPT = 30;
 
@@ -221,24 +221,22 @@ export async function POST(request: Request) {
       ? `\n\nThis is a NEW page called "${pageName}" for an existing multi-page site. Match the exact style, fonts, colors, header, and nav of the home page below. The nav must include a link to every page: ${Object.keys(pagesMap).concat(pageName).join(", ")}.\n\nHome page for style reference:\n${pagesMap.home}`
       : "";
 
-  const claudeMessages = [
-    ...history.map((m) => ({ role: m.role, content: m.content })),
-    ...(currentPageHtml
-      ? [
-          {
-            role: "user" as const,
-            content: `Current page ("${pageName}") HTML:\n${currentPageHtml}\n\nRequested change: ${message}`,
-          },
-        ]
-      : [
-          {
-            role: "user" as const,
-            content:
-              styleReference && typeof firstBuildContent === "string"
-                ? `${firstBuildContent}${styleReference}`
-                : (firstBuildContent as never),
-          },
-        ]),
+  const priorTurns = history.map((m) => ({
+    role: m.role,
+    content: m.content as unknown,
+  }));
+
+  // A first build writes the whole document; an edit patches the one that
+  // already exists. editPage owns building its own messages.
+  const firstBuildMessages = [
+    ...priorTurns,
+    {
+      role: "user" as const,
+      content:
+        styleReference && typeof firstBuildContent === "string"
+          ? `${firstBuildContent}${styleReference}`
+          : (firstBuildContent as never),
+    },
   ];
 
   const paymentsEnabled = project?.payments_enabled === true;
@@ -339,11 +337,21 @@ export async function POST(request: Request) {
       };
 
       try {
-        const result = await generatePageStreamed({
-          system: finalPrompt,
-          messages: claudeMessages,
-          onDelta: (text) => send({ t: "delta", v: text }),
-        });
+        const onDelta = (text: string) => send({ t: "delta", v: text });
+        const result = currentPageHtml
+          ? await editPage({
+              system: finalPrompt,
+              currentHtml: currentPageHtml,
+              instruction: message,
+              history: priorTurns,
+              pageName,
+              onDelta,
+            })
+          : await generatePageStreamed({
+              system: finalPrompt,
+              messages: firstBuildMessages,
+              onDelta,
+            });
 
         if (!result.ok) {
           send({ t: "error", error: result.error });
