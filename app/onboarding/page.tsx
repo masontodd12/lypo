@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { projectAllowance } from "@/lib/limits";
+import { projectAllowance, uniqueName } from "@/lib/limits";
 
 export default async function Onboarding({
   searchParams,
@@ -25,9 +25,12 @@ export default async function Onboarding({
   const allowance = await projectAllowance(supabase, user.id);
   if (allowance.reached) redirect("/dashboard?limit=projects");
 
-  const name = idea
+  // The name is derived from what they typed, not chosen, so a clash gets a
+  // number rather than an error about a name they never picked.
+  const wanted = idea
     ? idea.slice(0, 40).replace(/\s+\S*$/, "") || "untitled"
     : "untitled";
+  const name = await uniqueName(supabase, user.id, wanted);
 
   const { data: project, error } = await supabase
     .from("projects")

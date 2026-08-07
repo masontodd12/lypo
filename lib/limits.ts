@@ -27,6 +27,60 @@ export function resetsOnLabel(now = new Date()): string {
   });
 }
 
+/**
+ * Is this name already used by another of the same person's projects?
+ *
+ * Compared case-insensitively and trimmed, so "Fade Kings" and "fade kings "
+ * are the same name. Scoped to the one account on purpose: two unrelated
+ * barbershops both called Fade Kings is fine and not our business, but two
+ * of your own projects with the same name makes the dashboard unreadable.
+ */
+export async function isNameTaken(
+  supabase: SupabaseClient,
+  userId: string,
+  name: string,
+  exceptProjectId?: string,
+): Promise<boolean> {
+  const cleaned = name.trim().toLowerCase();
+  if (!cleaned) return false;
+
+  // Compared in JS rather than with ilike, whose % and _ are wildcards: a
+  // project called "50% off" or "fade_kings" would otherwise match names it
+  // should not. Nobody has many projects, so fetching them is cheap.
+  const { data } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+
+  return (data ?? []).some(
+    (p) =>
+      p.id !== exceptProjectId &&
+      (p.name ?? "").trim().toLowerCase() === cleaned,
+  );
+}
+
+/**
+ * Turns a wanted name into one that is free, by adding " 2", " 3" and so on.
+ * Used where a name is generated rather than typed, so onboarding never
+ * stops to argue about a name the person did not choose.
+ */
+export async function uniqueName(
+  supabase: SupabaseClient,
+  userId: string,
+  wanted: string,
+): Promise<string> {
+  const base = wanted.trim() || "untitled";
+  if (!(await isNameTaken(supabase, userId, base))) return base;
+
+  for (let n = 2; n <= 50; n++) {
+    const candidate = `${base} ${n}`;
+    if (!(await isNameTaken(supabase, userId, candidate))) return candidate;
+  }
+  // Someone has 50 of these. Fall back to something certainly free.
+  return `${base} ${Date.now().toString().slice(-5)}`;
+}
+
 export type ProjectAllowance = {
   used: number;
   limit: number;

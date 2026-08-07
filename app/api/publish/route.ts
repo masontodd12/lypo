@@ -79,6 +79,15 @@ export async function POST(request: Request) {
     .eq("id", projectId);
 
   if (error) {
+    // The check above can lose a race with another publish, so the unique
+    // index is the real guarantee. Report it as the taken link it is rather
+    // than a database error.
+    if (error.code === "23505") {
+      return NextResponse.json(
+        { error: "That link was just taken, try another." },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { projectAllowance } from "@/lib/limits";
+import { projectAllowance, uniqueName } from "@/lib/limits";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     .from("projects")
     .insert({
       user_id: user.id,
-      name: `${source.name} (remix)`,
+      name: await uniqueName(supabase, user.id, `${source.name} (remix)`),
       idea: source.idea,
       html: source.html,
       kind: source.kind,

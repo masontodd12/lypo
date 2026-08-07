@@ -26,9 +26,11 @@ export function ProjectCard({
   const [newName, setNewName] = useState(name);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [nameError, setNameError] = useState("");
 
   function cancelRename() {
     setNewName(name);
+    setNameError("");
     setRenaming(false);
   }
 
@@ -42,11 +44,34 @@ export function ProjectCard({
   async function rename() {
     const value = newName.trim();
     if (!value || value === name) {
-      setRenaming(false);
+      cancelRename();
       return;
     }
     setBusy(true);
+    setNameError("");
     const supabase = createClient();
+
+    // This name was typed on purpose, so say it is taken rather than
+    // quietly renaming it to something else. Compared in JS because ilike
+    // would treat % and _ in a name as wildcards. RLS scopes this to the
+    // signed-in user's own projects.
+    const { data: mine } = await supabase
+      .from("projects")
+      .select("id, name")
+      .is("deleted_at", null);
+
+    const clash = (mine ?? []).filter(
+      (p) =>
+        p.id !== id &&
+        (p.name ?? "").trim().toLowerCase() === value.toLowerCase(),
+    );
+
+    if (clash.length > 0) {
+      setNameError("You already have a project with that name.");
+      setBusy(false);
+      return;
+    }
+
     await supabase.from("projects").update({ name: value }).eq("id", id);
     setBusy(false);
     setRenaming(false);
@@ -109,10 +134,14 @@ export function ProjectCard({
       </Link>
 
       {renaming && (
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2">
+        <div className="flex items-center gap-2">
           <input
             value={newName}
-            onChange={(e) => setNewName(e.target.value)}
+            onChange={(e) => {
+              setNewName(e.target.value);
+              setNameError("");
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") rename();
               if (e.key === "Escape") cancelRename();
@@ -135,6 +164,12 @@ export function ProjectCard({
           >
             cancel
           </button>
+        </div>
+        {nameError && (
+          <p role="alert" className="mt-1.5 text-xs text-flame">
+            {nameError}
+          </p>
+        )}
         </div>
       )}
 

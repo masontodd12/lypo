@@ -85,6 +85,23 @@ $$;
 
 grant execute on function increment_site_view(uuid) to anon, authenticated;
 
+-- ---------- one site per address ----------
+-- The published slug is the site's public address. It was only ever checked
+-- in application code, so two publishes racing each other could both pass
+-- the check and write the same slug. Two rows sharing a slug breaks the site
+-- outright: the public page fetches with .single(), which errors when more
+-- than one row matches. Only the database can actually guarantee this.
+--
+-- Unpublished projects have a null slug, and nulls do not collide, so the
+-- index is partial.
+--
+-- If this errors with "could not create unique index", duplicates already
+-- exist. Find them with:
+--   select slug, count(*) from projects
+--   where slug is not null group by slug having count(*) > 1;
+create unique index if not exists projects_slug_key
+  on projects (slug) where slug is not null;
+
 -- ---------- onboarding draft ----------
 -- The interview runs five to seven questions before anything is generated.
 -- Without this the answers only lived in the browser, so closing the tab or
