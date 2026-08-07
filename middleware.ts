@@ -47,7 +47,12 @@ export async function middleware(request: NextRequest) {
       }
     } else if (!isPlatformRoute) {
       // ---- Custom domains: serve the mapped site ----
-      url.pathname = `/domain/${host}`;
+      // The path is kept, so /menu reaches the menu page. Dropping it used
+      // to send every URL to the home page, and the route it landed on
+      // redirected to /s/<slug>, which this same branch rewrote straight
+      // back here: an endless loop.
+      const path = url.pathname === "/" ? "" : url.pathname;
+      url.pathname = `/domain/${host}${path}`;
       return NextResponse.rewrite(url);
     }
   }
