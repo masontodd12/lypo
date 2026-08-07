@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { generatePage } from "@/lib/model";
 
-const MODEL = "gpt-5-mini";
 const VERSIONS_KEPT = 30;
 
 const SYSTEM_PROMPT = `You are the site generator behind Lypo, a tool that lets non-technical people build websites by describing them. Your users are fundraiser organizers, small business owners, churches, families, community groups. The site you make is often their only web presence, and most of their visitors are on phones.
@@ -270,79 +270,16 @@ export async function POST(request: Request) {
       .replace("__PAGE_RULE__", multiPageRule)
       .replace("__PURPOSE_BLOCK__", purposeBlock) + logoRule;
 
-  // ----- Call OpenAI -----
-  const apiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${process.env.OPENAI_API_KEY!}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_completion_tokens: 16000,
-      messages: [
-        { role: "system", content: finalPrompt },
-        ...claudeMessages,
-      ],
-    }),
+  // Retries before giving up, and never saves a half-written document.
+  const result = await generatePage({
+    system: finalPrompt,
+    messages: claudeMessages,
   });
 
-  if (!apiResponse.ok) {
-    const detail = await apiResponse.text();
-    console.error("OpenAI API error:", detail);
-    return NextResponse.json(
-      { error: "Generation failed. Try again in a moment." },
-      { status: 502 },
-    );
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 502 });
   }
-
-  const data = await apiResponse.json();
-  const finishReason: string | undefined = data.choices?.[0]?.finish_reason;
-  const raw: string = (data.choices?.[0]?.message?.content ?? "").trim();
-
-  if (!raw) {
-    console.error(
-      "OpenAI returned empty content:",
-      JSON.stringify({ finish_reason: finishReason, usage: data.usage }),
-    );
-    return NextResponse.json(
-      { error: "Generation came back empty. Try again." },
-      { status: 502 },
-    );
-  }
-
-  // ----- Extract summary + clean HTML -----
-  const summaryMatch = raw.match(/<!--\s*summary:\s*([\s\S]*?)-->/i);
-  const summary = summaryMatch
-    ? summaryMatch[1].trim()
-    : "Done. Take a look.";
-  const html = raw
-    .replace(/^```html?\s*/i, "")
-    .replace(/```\s*$/, "")
-    .trim();
-
-  // A response cut off at the token ceiling is a half-written document.
-  // Saving it would replace a working page with a broken one, so bail out
-  // and leave whatever the project already has untouched.
-  const looksComplete = /<\/html\s*>|<\/body\s*>/i.test(html);
-  if (finishReason === "length" || !looksComplete) {
-    console.error(
-      "Discarded truncated generation:",
-      JSON.stringify({
-        finish_reason: finishReason,
-        looksComplete,
-        chars: html.length,
-        usage: data.usage,
-      }),
-    );
-    return NextResponse.json(
-      {
-        error:
-          "That answer got cut off before the page was finished, so nothing was changed. Try again, or ask for a smaller change.",
-      },
-      { status: 502 },
-    );
-  }
+  const { html, summary } = result;
 
   // ----- Save everything -----
   const newMessages = [
