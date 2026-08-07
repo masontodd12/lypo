@@ -2618,23 +2618,31 @@ document.addEventListener("click", function (e) {
       <section
         className={`${
           mobilePane === "site" ? "flex" : "hidden"
-        } min-h-0 min-w-0 flex-1 flex-col bg-mist/60 md:flex`}
+        } lypo-grid min-h-0 min-w-0 flex-1 flex-col bg-mist/60 md:flex`}
       >
         {/* shrink-0 keeps this bar at its natural height. Without it the
             flex column squeezes it and the controls clip under the header. */}
-        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line px-4 py-2">
-          {(["preview", "code", "settings"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
-                tab === t ? "bg-ink text-paper" : "text-ink-soft hover:text-ink"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
+        <div
+          className={`flex shrink-0 flex-wrap items-center gap-1 border-b border-line px-4 py-2 ${
+            busy ? "lypo-scan" : ""
+          }`}
+        >
+          <div className="flex items-center gap-0.5 rounded-full border border-line p-0.5">
+            {(["preview", "code", "settings"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+                  tab === t
+                    ? "lypo-live bg-ink text-paper"
+                    : "text-ink-soft hover:text-ink"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
           <div className="ml-auto flex items-center gap-1">
             {tab === "preview" &&
               (["desktop", "phone"] as const).map((d) => (
@@ -2667,49 +2675,67 @@ document.addEventListener("click", function (e) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-4">
           {tab === "preview" ? (
             initialBuilding ? (
-              // Nothing is shown until every page is finished.
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <p className="font-display text-lg font-semibold tracking-tight">
-                  building your site
-                  <span className="text-flame">.</span>
-                </p>
-                <p className="text-sm text-ink-soft">
-                  {buildTotal > 1
-                    ? `Writing the ${buildPhase} page (${Math.min(buildDone + 1, buildTotal)} of ${buildTotal}).`
-                    : "Writing your home page."}
-                </p>
-                {buildTotal > 1 && (
-                  <div className="h-1 w-48 overflow-hidden rounded-full bg-line">
-                    <div
-                      className="h-full rounded-full bg-flame transition-all duration-500"
-                      style={{
-                        width: `${Math.round((buildDone / buildTotal) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                )}
-                {/* Proof that work is happening, without showing the
-                    half-built page itself. */}
-                {streamedChars > 0 && (
-                  <p className="text-xs text-faint">
-                    {buildDetail
-                      ? `just wrote: ${buildDetail}`
-                      : "writing the page"}
-                    <span className="text-faint/70">
-                      {" · "}
-                      {Math.round(streamedChars / 100) / 10}k characters
+              // Nothing of the page itself is shown until every page is
+              // finished. This is a status console, not a preview.
+              <div className="lypo-grid flex h-full flex-col items-center justify-center rounded-2xl">
+                <div className="lypo-panel lypo-scan w-full max-w-md rounded-2xl p-8 text-center">
+                  <div className="flex items-center justify-center">
+                    <span className="lypo-pulse lypo-live relative flex h-14 w-14 items-center justify-center rounded-full">
+                      <span className="h-2.5 w-2.5 rounded-full bg-flame" />
                     </span>
+                  </div>
+
+                  <p className="lypo-label mt-6 text-flame">
+                    {buildTotal > 1
+                      ? `page ${Math.min(buildDone + 1, buildTotal)} of ${buildTotal}`
+                      : "generating"}
                   </p>
-                )}
-                <p className="max-w-xs text-xs text-faint">
-                  This takes a minute or two. We show it once the whole site
-                  is ready, not half-finished.
-                </p>
+                  <p className="font-display mt-2 text-xl font-semibold tracking-tight">
+                    {buildPhase ? `writing the ${buildPhase} page` : "building your site"}
+                    <span className="text-flame">.</span>
+                  </p>
+
+                  {buildTotal > 1 && (
+                    <div className="mx-auto mt-5 h-px w-full max-w-xs overflow-hidden bg-line">
+                      <div
+                        className="h-px bg-flame transition-all duration-700"
+                        style={{
+                          width: `${Math.round((buildDone / buildTotal) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Live proof of work, without showing the half-built page. */}
+                  <div className="mt-5 min-h-[2.5rem]">
+                    {streamedChars > 0 ? (
+                      <>
+                        <p className="lypo-label text-faint">
+                          {(Math.round(streamedChars / 100) / 10).toFixed(1)}k
+                          characters
+                        </p>
+                        {buildDetail && (
+                          <p className="mt-1.5 truncate text-sm text-ink-soft">
+                            {buildDetail}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="lypo-label text-faint">warming up</p>
+                    )}
+                  </div>
+
+                  <p className="mt-6 border-t border-line pt-4 text-xs leading-relaxed text-faint">
+                    A minute or two. Nothing appears until the whole site is
+                    finished, never half-built.
+                  </p>
+                </div>
               </div>
             ) : hasSite ? (
               <>
               {multiPage && (
-                <div className="flex shrink-0 flex-wrap items-center gap-1.5 rounded-lg border border-line bg-paper px-3 py-2">
+                <div className="lypo-panel flex shrink-0 flex-wrap items-center gap-1.5 rounded-xl px-3 py-2">
+                  <span className="lypo-label mr-1 text-faint">pages</span>
                   {Object.keys(pages).length === 0 && (
                     <span className="text-xs text-faint">no pages yet</span>
                   )}
@@ -2720,7 +2746,7 @@ document.addEventListener("click", function (e) {
                       onClick={() => switchPage(name)}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                         currentPage === name
-                          ? "bg-ink text-paper"
+                          ? "lypo-live bg-ink text-paper"
                           : "text-ink-soft hover:text-flame"
                       }`}
                     >
@@ -2776,7 +2802,7 @@ document.addEventListener("click", function (e) {
               </div>
             )
           ) : tab === "code" ? (
-            <pre className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-paper p-4 text-xs leading-relaxed">
+            <pre className="lypo-panel min-h-0 flex-1 overflow-auto rounded-xl p-4 font-mono text-xs leading-relaxed">
               {html || "No code yet. Build something first."}
             </pre>
           ) : (

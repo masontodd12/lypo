@@ -70,9 +70,108 @@ html.theme-ready body {
   border-radius: 2px;
 }
 
+/* ==========================================================================
+   Builder chrome
+   Only the builder uses these. The marketing site and the generated sites
+   stay plain: the anti-slop rules the generator follows exist for a reason,
+   and this is the one surface where a bit of machinery is the point.
+   ========================================================================== */
+
+/* Faint dot grid, so large empty panels read as a surface rather than a void. */
+.lypo-grid {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in srgb, var(--color-ink) 9%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 22px 22px;
+}
+
+/* A panel that sits above the grid without hiding it completely. */
+.lypo-panel {
+  background: color-mix(in srgb, var(--color-paper) 82%, transparent);
+  backdrop-filter: blur(10px);
+  border: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent);
+}
+
+/* Active control: a ring of accent light rather than a flat fill. */
+.lypo-live {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-flame) 45%, transparent),
+    0 0 18px -4px color-mix(in srgb, var(--color-flame) 55%, transparent);
+}
+
+/* Small uppercase machine labels. */
+.lypo-label {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* The build indicator: concentric rings breathing outward. */
+.lypo-pulse::before,
+.lypo-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid var(--color-flame);
+  animation: lypo-ring 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+.lypo-pulse::after {
+  animation-delay: 1.2s;
+}
+@keyframes lypo-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* A line of light travelling along the top edge while work is happening. */
+.lypo-scan {
+  position: relative;
+  overflow: hidden;
+}
+.lypo-scan::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 1px;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-flame),
+    transparent
+  );
+  animation: lypo-sweep 2s linear infinite;
+}
+@keyframes lypo-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+  /* The rings and the sweep are decoration; without motion they would sit
+     frozen mid-animation, so remove them outright. */
+  .lypo-pulse::before,
+  .lypo-pulse::after,
+  .lypo-scan::after {
+    display: none;
   }
   *,
   *::before,
