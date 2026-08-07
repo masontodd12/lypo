@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { generatePage } from "@/lib/model";
+import { generatePageStreamed } from "@/lib/model";
 
 const VERSIONS_KEPT = 30;
 
@@ -270,18 +270,13 @@ export async function POST(request: Request) {
       .replace("__PAGE_RULE__", multiPageRule)
       .replace("__PURPOSE_BLOCK__", purposeBlock) + logoRule;
 
-  // Retries before giving up, and never saves a half-written document.
-  const result = await generatePage({
-    system: finalPrompt,
-    messages: claudeMessages,
-  });
+  // Captured because the earlier null check does not narrow inside a
+  // closure, which TypeScript is right to insist on.
+  const userId = user.id;
 
-  if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 502 });
-  }
-  const { html, summary } = result;
-
-  // ----- Save everything -----
+  // Persisted only once a complete document is in hand, so a failed or
+  // half-written generation never touches the project.
+  async function persist(html: string, summary: string) {
   const newMessages = [
     ...history,
     { role: "user", content: message },
@@ -326,12 +321,54 @@ export async function POST(request: Request) {
   }
 
   await supabase.from("usage").upsert(
-    { user_id: user.id, day: today, count: used + 1 },
+    { user_id: userId, day: today, count: used + 1 },
     { onConflict: "user_id,day" },
   );
+  }
 
-  return NextResponse.json({
-    html,
-    summary,
+  // Streamed as newline-delimited JSON so the builder can show that work is
+  // happening instead of a dead minute. The page is still only revealed once
+  // it is complete and saved: a half-written document must never be shown as
+  // if it were a finished site.
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      let open = true;
+      const send = (obj: unknown) => {
+        if (open) controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      };
+
+      try {
+        const result = await generatePageStreamed({
+          system: finalPrompt,
+          messages: claudeMessages,
+          onDelta: (text) => send({ t: "delta", v: text }),
+        });
+
+        if (!result.ok) {
+          send({ t: "error", error: result.error });
+          return;
+        }
+
+        await persist(result.html, result.summary);
+        send({ t: "done", html: result.html, summary: result.summary });
+      } catch (e) {
+        console.error("generate failed:", e);
+        send({
+          t: "error",
+          error: "Something went wrong building that. Nothing was changed.",
+        });
+      } finally {
+        open = false;
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+    },
   });
 }

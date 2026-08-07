@@ -73,6 +73,65 @@ function Switch({
   );
 }
 
+type GenerateResult =
+  | { t: "done"; html: string; summary: string; error?: undefined }
+  | { t: "error"; error: string; html?: undefined; summary?: undefined };
+
+/**
+ * Reads the newline-delimited JSON the generate route sends back.
+ *
+ * Deltas are reported to onDelta as they arrive; the returned value is the
+ * single terminal message. A stream that ends without one is treated as a
+ * failure rather than a silent success.
+ */
+async function readGenerateStream(
+  response: Response,
+  onDelta: (text: string) => void,
+): Promise<GenerateResult | null> {
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let final: GenerateResult | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let cut;
+    while ((cut = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, cut).trim();
+      buffer = buffer.slice(cut + 1);
+      if (!line) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.t === "delta") onDelta(msg.v ?? "");
+        else if (msg.t === "done" || msg.t === "error") final = msg;
+      } catch {
+        // A line split across chunks completes on the next read.
+      }
+    }
+  }
+  return final;
+}
+
+/**
+ * The most recent section heading in the partial HTML, so the build readout
+ * can say what is being written rather than just spinning. Deliberately not
+ * the markup itself: a half-built page must not be shown as if it were done.
+ */
+function lastHeadingIn(partial: string): string | null {
+  const matches = partial.match(/<h[12][^>]*>([^<]{2,60})</gi);
+  if (!matches || matches.length === 0) return null;
+  const text = matches[matches.length - 1]
+    .replace(/<[^>]*>/g, "")
+    // A global match keeps the trailing "<" that closed the capture.
+    .replace(/<$/, "")
+    .trim();
+  return text || null;
+}
+
 /** Labels for the priced grid, which collects menus, services or products. */
 const NOUNS = {
   item: {
@@ -538,6 +597,11 @@ export function BuilderChat({
   const [buildPhase, setBuildPhase] = useState<string | null>(null);
   const [buildTotal, setBuildTotal] = useState(0);
   const [buildDone, setBuildDone] = useState(0);
+  // Live signs of life while a page is being written. The markup itself is
+  // never rendered mid-flight; only its size and latest heading are shown.
+  const streamedRef = useRef("");
+  const [streamedChars, setStreamedChars] = useState(0);
+  const [buildDetail, setBuildDetail] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [picked, setPicked] = useState<{ tag: string; text: string } | null>(null);
   const [multiPage, setMultiPage] = useState(initialMultiPage);
@@ -979,6 +1043,9 @@ document.addEventListener("click", function (e) {
     const targetPage = pageOverride ?? currentPage;
     setBusy(true);
     setError("");
+    streamedRef.current = "";
+    setStreamedChars(0);
+    setBuildDetail("");
     if (!silent && !html) buildStart.current = Date.now();
     let finalMessage = message;
     if (picked) {
@@ -1001,10 +1068,19 @@ document.addEventListener("click", function (e) {
           logoUrl: logo ?? undefined,
         }),
       });
-      const data = await response.json();
+      // Newline-delimited JSON: many {t:"delta"} as the page is written,
+      // then one {t:"done"} or {t:"error"}. Only "done" is authoritative;
+      // the deltas exist purely so the wait shows signs of life.
+      const data = await readGenerateStream(response, (text) => {
+        streamedRef.current += text;
+        setStreamedChars(streamedRef.current.length);
+        const heading = lastHeadingIn(streamedRef.current);
+        if (heading) setBuildDetail(heading);
+      });
+      streamedRef.current = "";
 
-      if (!response.ok) {
-        setError(data.error ?? "Something went wrong. Try again.");
+      if (!response.ok || !data || data.t === "error") {
+        setError(data?.error ?? "Something went wrong. Try again.");
         setMessages((prev) => prev.slice(0, -1));
       } else {
         setPages((prev) => ({ ...prev, [targetPage]: data.html }));
@@ -2339,7 +2415,13 @@ document.addEventListener("click", function (e) {
           )}
           {busy && (
             <div className="max-w-[85%] rounded-2xl rounded-bl-sm border border-line px-4 py-2.5 text-faint">
-              building…
+              {/* Reports progress rather than a static ellipsis, so a long
+                  edit does not look like it has stalled. */}
+              {streamedChars > 0
+                ? buildDetail
+                  ? `writing… ${buildDetail}`
+                  : `writing… ${Math.round(streamedChars / 100) / 10}k characters`
+                : "building…"}
             </div>
           )}
           {error && <p className="text-sm text-flame">{error}</p>}
@@ -2605,6 +2687,19 @@ document.addEventListener("click", function (e) {
                       }}
                     />
                   </div>
+                )}
+                {/* Proof that work is happening, without showing the
+                    half-built page itself. */}
+                {streamedChars > 0 && (
+                  <p className="text-xs text-faint">
+                    {buildDetail
+                      ? `just wrote: ${buildDetail}`
+                      : "writing the page"}
+                    <span className="text-faint/70">
+                      {" · "}
+                      {Math.round(streamedChars / 100) / 10}k characters
+                    </span>
+                  </p>
                 )}
                 <p className="max-w-xs text-xs text-faint">
                   This takes a minute or two. We show it once the whole site
