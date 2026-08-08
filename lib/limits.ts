@@ -103,6 +103,21 @@ export async function projectAllowance(
   userId: string,
   { unlimited = false }: { unlimited?: boolean } = {},
 ): Promise<ProjectAllowance> {
+  // An admin grant raises this one account's ceiling without making them an
+  // admin. Read best-effort: the table may not exist yet, and a missing
+  // grant simply means the ordinary limit.
+  let granted = 0;
+  try {
+    const { data } = await supabase
+      .from("project_grants")
+      .select("extra_projects")
+      .eq("user_id", userId)
+      .maybeSingle();
+    granted = data?.extra_projects ?? 0;
+  } catch {
+    granted = 0;
+  }
+
   // Still counted, so an admin can see their own usage; simply never capped.
   const { count } = await supabase
     .from("projects")
@@ -111,13 +126,14 @@ export async function projectAllowance(
     .gte("created_at", monthStart().toISOString());
 
   const used = count ?? 0;
+  const limit = MONTHLY_PROJECT_LIMIT + granted;
   const remaining = unlimited
     ? Number.POSITIVE_INFINITY
-    : Math.max(0, MONTHLY_PROJECT_LIMIT - used);
+    : Math.max(0, limit - used);
   return {
     unlimited,
     used,
-    limit: MONTHLY_PROJECT_LIMIT,
+    limit,
     remaining,
     reached: !unlimited && remaining === 0,
     resetsOn: resetsOnLabel(),

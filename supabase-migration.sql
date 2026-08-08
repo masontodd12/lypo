@@ -85,6 +85,50 @@ $$;
 
 grant execute on function increment_site_view(uuid) to anon, authenticated;
 
+-- ---------- service_role table access ----------
+-- On this project service_role has no table privileges, so anything using
+-- the service key fails with "permission denied for table projects". That
+-- is not only the admin pages: the weekly digest cron uses the same client,
+-- so it has been failing silently.
+--
+-- service_role is the backend role. It bypasses RLS by design and its key is
+-- server-only, never sent to a browser. These grants restore what a Supabase
+-- project normally starts with.
+grant usage on schema public to service_role;
+grant all privileges on all tables in schema public to service_role;
+grant all privileges on all sequences in schema public to service_role;
+grant all privileges on all functions in schema public to service_role;
+
+-- So tables added later are reachable too, without repeating this.
+alter default privileges in schema public
+  grant all privileges on tables to service_role;
+alter default privileges in schema public
+  grant all privileges on sequences to service_role;
+
+-- ---------- admin: featured sites ----------
+-- The gallery is hand-written mockups. This lets a real published site be
+-- shown there instead, which is far more convincing than an illustration.
+alter table projects add column if not exists featured boolean not null default false;
+
+-- ---------- admin: extra build allowance ----------
+-- Granting one account more sites this month without making them an admin,
+-- for a nonprofit or a class that legitimately needs more than five.
+create table if not exists project_grants (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  extra_projects integer not null default 0,
+  note text,
+  updated_at timestamptz not null default now()
+);
+
+alter table project_grants enable row level security;
+
+-- Readable by the account it belongs to so the dashboard can show the
+-- larger allowance. Only the service role writes, which is how the admin
+-- pages reach it; no client-side policy grants insert or update.
+drop policy if exists "read own grant" on project_grants;
+create policy "read own grant" on project_grants
+  for select using (user_id = auth.uid());
+
 -- ---------- one site per address ----------
 -- The published slug is the site's public address. It was only ever checked
 -- in application code, so two publishes racing each other could both pass

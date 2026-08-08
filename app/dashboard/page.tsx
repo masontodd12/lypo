@@ -78,6 +78,14 @@ export default async function Dashboard({
             )}
           </div>
           <div className="flex items-center gap-6 text-sm">
+            {isAdmin(user) && (
+              <Link
+                href="/admin"
+                className="font-medium text-flame transition hover:underline"
+              >
+                admin
+              </Link>
+            )}
             <Link
               href="/settings"
               className="text-faint transition hover:text-flame"

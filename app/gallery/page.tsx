@@ -1,9 +1,38 @@
 import Link from "next/link";
 import { EXAMPLES } from "@/lib/examples";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { siteUrlFor } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
 
-export default function Gallery() {
+type Featured = { id: string; name: string; slug: string; html: string | null };
+
+/**
+ * Real sites an admin has chosen to show off.
+ *
+ * Best-effort: the featured column may not exist yet, and the gallery is
+ * still worth showing without it. Service role because these are other
+ * people's rows, and only ones explicitly marked featured are read.
+ */
+async function getFeatured(): Promise<Featured[]> {
+  try {
+    const db = createAdminClient();
+    const { data, error } = await db
+      .from("projects")
+      .select("id, name, slug, html")
+      .eq("featured", true)
+      .eq("status", "published")
+      .is("deleted_at", null)
+      .limit(12);
+    if (error) return [];
+    return (data ?? []).filter((p): p is Featured => !!p.slug);
+  } catch {
+    return [];
+  }
+}
+
+export default async function Gallery() {
+  const featured = await getFeatured();
   return (
     <main className="mx-auto max-w-6xl px-6">
       <header className="flex items-center justify-between py-8">
@@ -24,7 +53,50 @@ export default function Gallery() {
           Start from it and make it your own.
         </p>
 
-        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {featured.length > 0 && (
+          <>
+            <h2 className="font-display mt-12 text-lg font-semibold tracking-tight">
+              real sites, live right now
+            </h2>
+            <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {featured.map((site) => (
+                <a
+                  key={site.id}
+                  href={siteUrlFor(site.slug)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group/card rounded-xl border border-line bg-paper p-4 transition hover:border-flame"
+                >
+                  <div className="h-40 overflow-hidden rounded-lg border border-line bg-ink">
+                    {site.html ? (
+                      <iframe
+                        srcDoc={site.html}
+                        sandbox=""
+                        tabIndex={-1}
+                        aria-hidden="true"
+                        title=""
+                        className="pointer-events-none h-[640px] w-[400%] origin-top-left scale-25 bg-paper"
+                      />
+                    ) : null}
+                  </div>
+                  <p className="font-display mt-4 font-semibold">{site.name}</p>
+                  <p className="mt-0.5 text-xs text-ink-soft">
+                    {siteUrlFor(site.slug).replace(/^https?:\/\//, "")}
+                  </p>
+                  <p className="mt-2 text-xs font-medium text-faint transition group-hover/card:text-flame">
+                    visit the site →
+                  </p>
+                </a>
+              ))}
+            </div>
+
+            <h2 className="font-display mt-14 text-lg font-semibold tracking-tight">
+              and the kinds of things you could make
+            </h2>
+          </>
+        )}
+
+        <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {EXAMPLES.map((example) => (
             <div key={example.name} className="rounded-xl border border-line bg-paper p-4 transition hover:border-flame">
               {example.preview}
