@@ -1,5 +1,8 @@
--- lypo: version history + analytics
--- Run this once in the Supabase SQL editor.
+-- lypo database migration.
+--
+-- Safe to run as many times as you like: every statement is guarded, and
+-- policies are dropped before being recreated because create policy errors
+-- rather than no-opping when the policy already exists.
 
 -- ---------- version history ----------
 create table if not exists project_versions (
@@ -16,6 +19,7 @@ create index if not exists project_versions_project_idx
 
 alter table project_versions enable row level security;
 
+drop policy if exists "owners read own versions" on project_versions;
 create policy "owners read own versions" on project_versions
   for select using (
     exists (
@@ -25,6 +29,7 @@ create policy "owners read own versions" on project_versions
     )
   );
 
+drop policy if exists "owners insert own versions" on project_versions;
 create policy "owners insert own versions" on project_versions
   for insert with check (
     exists (
@@ -34,6 +39,7 @@ create policy "owners insert own versions" on project_versions
     )
   );
 
+drop policy if exists "owners delete own versions" on project_versions;
 create policy "owners delete own versions" on project_versions
   for delete using (
     exists (
@@ -58,6 +64,7 @@ create table if not exists site_views (
 
 alter table site_views enable row level security;
 
+drop policy if exists "owners read own views" on site_views;
 create policy "owners read own views" on site_views
   for select using (
     exists (
