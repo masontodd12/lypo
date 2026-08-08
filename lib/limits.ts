@@ -82,6 +82,8 @@ export async function uniqueName(
 }
 
 export type ProjectAllowance = {
+  /** Admins are not metered; the UI uses this to say so plainly. */
+  unlimited: boolean;
   used: number;
   limit: number;
   remaining: number;
@@ -99,7 +101,9 @@ export type ProjectAllowance = {
 export async function projectAllowance(
   supabase: SupabaseClient,
   userId: string,
+  { unlimited = false }: { unlimited?: boolean } = {},
 ): Promise<ProjectAllowance> {
+  // Still counted, so an admin can see their own usage; simply never capped.
   const { count } = await supabase
     .from("projects")
     .select("id", { count: "exact", head: true })
@@ -107,12 +111,15 @@ export async function projectAllowance(
     .gte("created_at", monthStart().toISOString());
 
   const used = count ?? 0;
-  const remaining = Math.max(0, MONTHLY_PROJECT_LIMIT - used);
+  const remaining = unlimited
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, MONTHLY_PROJECT_LIMIT - used);
   return {
+    unlimited,
     used,
     limit: MONTHLY_PROJECT_LIMIT,
     remaining,
-    reached: remaining === 0,
+    reached: !unlimited && remaining === 0,
     resetsOn: resetsOnLabel(),
   };
 }

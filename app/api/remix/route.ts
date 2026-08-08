@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { projectAllowance, uniqueName } from "@/lib/limits";
+import { isAdmin } from "@/lib/admin";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -12,7 +13,9 @@ export async function POST(request: Request) {
   }
 
   // A remix creates a new project, so it draws from the same allowance.
-  const allowance = await projectAllowance(supabase, user.id);
+  const allowance = await projectAllowance(supabase, user.id, {
+    unlimited: isAdmin(user),
+  });
   if (allowance.reached) {
     return NextResponse.json(
       {

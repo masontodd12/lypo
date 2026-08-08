@@ -5,6 +5,7 @@ import { SignOutButton } from "@/components/SignOutButton";
 import { ProjectCard } from "@/components/ProjectCard";
 import { siteUrlFor } from "@/lib/site-url";
 import { projectAllowance } from "@/lib/limits";
+import { isAdmin } from "@/lib/admin";
 
 export default async function Dashboard({
   searchParams,
@@ -38,7 +39,9 @@ export default async function Dashboard({
     }
   }
 
-  const allowance = await projectAllowance(supabase, user.id);
+  const allowance = await projectAllowance(supabase, user.id, {
+    unlimited: isAdmin(user),
+  });
   const total = projects?.length ?? 0;
   const publishedCount =
     projects?.filter((p) => p.status === "published").length ?? 0;
@@ -120,7 +123,7 @@ export default async function Dashboard({
         )}
 
         {/* Quiet until it matters, so it reads as a heads-up, not a paywall. */}
-        {!allowance.reached && allowance.remaining <= 2 && (
+        {!allowance.unlimited && !allowance.reached && allowance.remaining <= 2 && (
           <p className="mt-6 text-sm text-ink-soft">
             {allowance.remaining} new site{allowance.remaining === 1 ? "" : "s"}{" "}
             left this month. Resets {allowance.resetsOn}. Editing what you have

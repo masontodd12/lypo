@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { projectAllowance, uniqueName } from "@/lib/limits";
+import { isAdmin } from "@/lib/admin";
 
 export default async function Onboarding({
   searchParams,
@@ -22,7 +23,9 @@ export default async function Onboarding({
 
   // Starting a site is what costs money, so that is where the ceiling sits.
   // Editing an existing one is unlimited.
-  const allowance = await projectAllowance(supabase, user.id);
+  const allowance = await projectAllowance(supabase, user.id, {
+    unlimited: isAdmin(user),
+  });
   if (allowance.reached) redirect("/dashboard?limit=projects");
 
   // The name is derived from what they typed, not chosen, so a clash gets a
