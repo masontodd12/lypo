@@ -40,7 +40,7 @@ FORBIDDEN (these are the signature of AI-generated sites, never produce them):
 - Filler copy ("Bold care. Big love.", "Empowering communities", "Your journey starts here"). If you lack a real fact, write less.
 - Visible captions, titles, or labels on photos, ever. No text under, over, or beside an image naming what it is ("Community photo", "Our kitchen", "Jane and her dog"). Photos run uncaptioned. Describe the image only in its alt attribute, which is never rendered as visible text.
 - Fake statistics, fake testimonials, invented dollar amounts or dates. Never invent a number.
-- Invented destinations on an <a>. Never write a link href you were not given: no guessed ordering page, no made-up booking system, no placeholder social profile, no <a href="#"> pretending to be a real destination. A link that goes nowhere is worse than no link: a customer taps it, lands on an error, and assumes the business is closed or fake. Given no URL, leave the button out and point at the phone number or address instead. (Two things this does not mean: forms still use action="#", and internal page nav still uses <a data-lypo-page="..." href="#">. Both are correct and required. The rule is about sending a visitor to an outside address you invented.)
+- Invented destinations on an <a>. Never write a link href you were not given: no guessed ordering page, no guessed booking or appointment page, no placeholder social profile, no <a href="#"> pretending to be a real destination. A link that goes nowhere is worse than no link: a customer taps it, lands on an error, and assumes the business is closed or fake. Given no URL, leave the button out and point at the phone number or address instead. (Two things this does not mean: forms still use action="#", and internal page nav still uses <a data-lypo-page="..." href="#">. Both are correct and required. The rule is about sending a visitor to an outside address you invented.)
 - Stock CTA labels ("Get Started", "Learn More"). Say the actual action: "Donate $25", "Book a cut", "See Sunday times".
 
 REQUIRED:
@@ -108,7 +108,7 @@ const PURPOSES: Record<string, string> = {
   church:
     "PURPOSE: CHURCH / PLACE OF WORSHIP. Include: service times; address with a map link; what a first-time visitor should expect (what a service is actually like, parking, dress, kids' programming, if the user described any of it); giving section only if payments are enabled or the user asks; contact. Warm and welcoming, never flashy.",
   barbershop:
-    "PURPOSE: BARBERSHOP / SALON. Include: service menu with real prices from the user; how to book; a work gallery if photos exist; hours; address; phone as a tap-to-call link (tel:). Bold local energy is welcome here.",
+    "PURPOSE: BARBERSHOP / SALON. Include: service menu with real prices from the user; how to book. A \"book now\" button ONLY if a booking link was actually given, using that exact URL; with no link given there is no booking button anywhere, and the phone number carries the action instead. Also include: a work gallery if photos exist; hours; address; phone as a tap-to-call link (tel:). Bold local energy is welcome here.",
   restaurant: `PURPOSE: RESTAURANT. This is a real place people decide whether to drive to, so the site has one job: make them want to come and tell them how.
 
 HOME page must include, in roughly this order:
@@ -142,11 +142,11 @@ Tone is warm and confident, never corporate. A neighborhood restaurant should no
   sports:
     "PURPOSE: YOUTH SPORTS TEAM. Include: team name and league; roster if given; game schedule; practice times; coach contact; a volunteer or signup form. Team colors are the accent if the user named them.",
   business:
-    "PURPOSE: SMALL BUSINESS / SERVICES. Include: what you do stated plainly; who it is for; services or pricing; proof of work if photos exist, each with one real sentence of context (what it was, for whom) rather than a bare photo grid; hours; contact with tap-to-call phone.",
+    "PURPOSE: SMALL BUSINESS / SERVICES. A \"book\" or \"request a quote\" button ONLY if a booking link was given, using that exact URL; otherwise no booking button and the phone number carries the action. Include: what you do stated plainly; who it is for; services or pricing; proof of work if photos exist, each with one real sentence of context (what it was, for whom) rather than a bare photo grid; hours; contact with tap-to-call phone.",
   event:
     "PURPOSE: EVENT. Include: what, when (date and time), where (address); why to come; a fuller rundown of the day if the user gave one, not just a start time; an RSVP form; who is hosting.",
   portfolio:
-    "PURPOSE: PORTFOLIO. Include: name and one-line intro; the work itself front and center (photos if given); a short about; contact. The work is the hero, keep chrome minimal.",
+    "PURPOSE: PORTFOLIO. A booking or enquiry button ONLY if a booking link was given, using that exact URL; otherwise point at the contact details instead. Include: name and one-line intro; the work itself front and center (photos if given); a short about; contact. The work is the hero, keep chrome minimal.",
   personal:
     "PURPOSE: PERSONAL PAGE. Include: name, a real bio from the user's words, interests, links. Small and human, not a landing page.",
   landing:

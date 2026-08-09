@@ -235,6 +235,11 @@ const BARBERSHOP_INTERVIEW: Question[] = [
     q: "how do people book",
     hint: "Phone number, booking site, walk-ins only, or all three. We make phone numbers tap-to-call.",
   },
+  {
+    q: "your online booking link",
+    hint: "Paste the link clients use to book, from Booksy, Square, Vagaro, StyleSeat, Calendly, anywhere. Leave it blank if you take bookings by phone and we will leave the button off rather than sending people to a dead page.",
+    optional: true,
+  },
 ];
 
 const BUSINESS_INTERVIEW: Question[] = [
@@ -269,6 +274,11 @@ const BUSINESS_INTERVIEW: Question[] = [
   {
     q: "how do people reach you",
     hint: "Phone, email, and address if customers come to you. We make phone numbers tap-to-call.",
+  },
+  {
+    q: "your online booking link",
+    hint: "Paste the link clients use to book, from Booksy, Square, Vagaro, StyleSeat, Calendly, anywhere. Leave it blank if you take bookings by phone and we will leave the button off rather than sending people to a dead page.",
+    optional: true,
   },
 ];
 
@@ -386,6 +396,11 @@ const PORTFOLIO_INTERVIEW: Question[] = [
   {
     q: "are you taking work",
     hint: "Booking, commissions, full-time roles, or just showing. Say what you want people to ask for.",
+  },
+  {
+    q: "your online booking link",
+    hint: "Paste the link clients use to book, from Booksy, Square, Vagaro, StyleSeat, Calendly, anywhere. Leave it blank if you take bookings by phone and we will leave the button off rather than sending people to a dead page.",
+    optional: true,
   },
   {
     q: "how do people reach you",

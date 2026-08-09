@@ -1,6 +1,9 @@
 /**
  * Checking a link an owner pasted before it goes on their public site.
  *
+ * Covers ordering links and booking links alike: the risk is identical
+ * either way, since both end up as a button a customer taps.
+ *
  * What this can do: reject anything that is not a plain web address, catch
  * typos and pasted nonsense, and recognise the ordering services people
  * actually use so an unfamiliar domain gets a second look.
@@ -11,12 +14,32 @@
  * failures impossible and the unusual ones visible.
  */
 
-/** Ordering and booking services these owners genuinely use. */
+/** Ordering, booking and reservation services these owners genuinely use. */
 const KNOWN_PROVIDERS = [
-  "toasttab.com",
-  "order.online", // Toast's short domain
+  // Booking and appointments
+  "booksy.com",
+  "vagaro.com",
+  "styleseat.com",
+  "squire.co",
+  "getsquire.com",
+  "fresha.com",
+  "glossgenius.com",
+  "schedulicity.com",
+  "setmore.com",
+  "calendly.com",
+  "acuityscheduling.com",
+  "app.acuityscheduling.com",
+  "mindbodyonline.com",
+  "boulevard.io",
+  "joinblvd.com",
+  "housecallpro.com",
+  "getjobber.com",
   "square.site",
   "squareup.com",
+  "book.squareup.com",
+  // Ordering and delivery
+  "toasttab.com",
+  "order.online", // Toast's short domain
   "clover.com",
   "doordash.com",
   "ubereats.com",
@@ -48,7 +71,7 @@ export type LinkCheck =
     }
   | { ok: false; reason: string };
 
-export function checkOrderingLink(raw: string): LinkCheck {
+export function checkExternalLink(raw: string): LinkCheck {
   const trimmed = (raw ?? "").trim();
   if (!trimmed) return { ok: false, reason: "Nothing entered." };
 

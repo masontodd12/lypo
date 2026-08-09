@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { INTERVIEWS, INTERVIEW, type Question } from "@/lib/interviews";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { checkOrderingLink } from "@/lib/links";
+import { checkExternalLink } from "@/lib/links";
 
 /**
  * A turn in the conversation, belonging to one page.
@@ -1628,7 +1628,7 @@ document.addEventListener("click", function (e) {
     const updated = [...answers];
     const rawAnswer = answerDraft.trim();
     const linkCheck = /link/i.test(interview[qIndex]?.q ?? "") && rawAnswer
-      ? checkOrderingLink(rawAnswer)
+      ? checkExternalLink(rawAnswer)
       : null;
     updated[qIndex] =
       interview[qIndex]?.kind === "menu"
@@ -2333,7 +2333,7 @@ document.addEventListener("click", function (e) {
                 before it is accepted rather than after it is published. */}
             {isLinkQuestion && answerDraft.trim() && (
               (() => {
-                const check = checkOrderingLink(answerDraft);
+                const check = checkExternalLink(answerDraft);
                 if (!check.ok) {
                   return (
                     <p className="mt-2 text-sm text-flame">{check.reason}</p>
@@ -2372,7 +2372,7 @@ document.addEventListener("click", function (e) {
             onClick={nextQuestion}
             disabled={
               isLinkQuestion && answerDraft.trim()
-                ? !checkOrderingLink(answerDraft).ok
+                ? !checkExternalLink(answerDraft).ok
                 : current.optional
                 ? false
                 : current.kind === "menu"
