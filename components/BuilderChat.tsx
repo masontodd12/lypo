@@ -5,7 +5,17 @@ import { createClient } from "@/lib/supabase/client";
 import { INTERVIEWS, INTERVIEW, type Question } from "@/lib/interviews";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-type Message = { role: "user" | "assistant"; content: string };
+/**
+ * A turn in the conversation, belonging to one page.
+ *
+ * Turns saved before pages were tracked have no page and are treated as the
+ * home page, which is where they were written.
+ */
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  page?: string;
+};
 
 /**
  * Everything the interview collects before the first build. Persisted to the
@@ -885,6 +895,12 @@ document.addEventListener("click", function (e) {
   // Whether anything has finished building yet. Drives whether the preview
   // shows the site or a waiting state, so an unbuilt page never renders as
   // a blank white iframe.
+  // Only this page's turns. A shared thread meant switching to the menu tab
+  // showed a conversation about the home page.
+  const pageMessages = messages.filter(
+    (m) => (m.page ?? "home") === currentPage,
+  );
+
   const hasSite = Object.values(pages).some(
     (p) => typeof p === "string" && p.trim() !== "",
   );
@@ -1053,7 +1069,10 @@ document.addEventListener("click", function (e) {
       setPicked(null);
       setEditMode(false);
     }
-    setMessages((prev) => [...prev, { role: "user", content: message }]);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: message, page: targetPage },
+    ]);
 
     try {
       const response = await fetch("/api/generate", {
@@ -1104,7 +1123,7 @@ document.addEventListener("click", function (e) {
         }
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: data.summary },
+          { role: "assistant", content: data.summary, page: targetPage },
         ]);
         return data.html as string;
       }
@@ -2408,8 +2427,22 @@ document.addEventListener("click", function (e) {
           mobilePane === "chat" ? "flex" : "hidden"
         } min-h-0 w-full max-w-none flex-1 flex-col border-line p-4 md:flex md:w-[36%] md:max-w-md md:flex-none md:border-r md:p-5`}
       >
+        {/* Each page has its own thread. The multi-page nav says which page
+            the preview is on, so the chat says which page it is editing. */}
+        {multiPage && hasSite && (
+          <p className="lypo-label mb-3 shrink-0 text-faint">
+            editing the {currentPage} page
+          </p>
+        )}
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto text-sm">
-          {messages.map((m, i) =>
+          {pageMessages.length === 0 && !busy && (
+            <p className="text-sm text-faint">
+              {multiPage
+                ? `Nothing asked about the ${currentPage} page yet. Describe a change below.`
+                : "Describe a change below."}
+            </p>
+          )}
+          {pageMessages.map((m, i) =>
             m.role === "user" ? (
               <div key={i} className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-mist px-4 py-2.5">
                 {m.content.length > 220 ? m.content.slice(0, 220) + "…" : m.content}

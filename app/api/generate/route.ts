@@ -216,8 +216,24 @@ export async function POST(request: Request) {
   const used = usage?.count ?? 0;
 
   // ----- Build the conversation -----
-  const history: { role: "user" | "assistant"; content: string }[] =
-    Array.isArray(project.messages) ? project.messages.slice(-10) : [];
+  // Every turn is kept, tagged with the page it belongs to. Slicing here as
+  // well as when writing back used to delete anything older than the last
+  // dozen turns permanently, not merely hide it from the model.
+  type Turn = {
+    role: "user" | "assistant";
+    content: string;
+    page?: string;
+  };
+  const allTurns: Turn[] = Array.isArray(project.messages)
+    ? (project.messages as Turn[])
+    : [];
+
+  // Each page is its own conversation. Editing the menu should not hand the
+  // model ten turns about the home page, which is both confusing context and
+  // a good way to have it change the wrong thing.
+  const history = allTurns
+    .filter((m) => (m.page ?? "home") === pageName)
+    .slice(-10);
 
   const pagesMap: Record<string, string> =
     project.pages && typeof project.pages === "object"
@@ -301,11 +317,13 @@ export async function POST(request: Request) {
   // Persisted only once a complete document is in hand, so a failed or
   // half-written generation never touches the project.
   async function persist(html: string, summary: string) {
+  // Appended to everything already stored, not to the ten-turn window, and
+  // capped only to keep one row from growing without bound.
   const newMessages = [
-    ...history,
-    { role: "user", content: message },
-    { role: "assistant", content: summary },
-  ];
+    ...allTurns,
+    { role: "user", content: message, page: pageName },
+    { role: "assistant", content: summary, page: pageName },
+  ].slice(-400);
 
   pagesMap[pageName] = html;
   await supabase
