@@ -16,16 +16,14 @@ const inter = Inter({
 
 // The browser tab, the Google result, and every shared link.
 //
-// The title says what Lypo is, because a stranger seeing it in search
-// results has no idea otherwise. The line the site actually leads with
-// carries the description instead, where there is room for it.
+// The title says what Lypo is, because a stranger seeing it in a list of
+// search results has no idea otherwise. The description is the line the
+// site leads with and nothing else, deliberately: it is the whole pitch.
 //
-// Not led with "free": it invites the wrong comparison, and the reason to
-// use this is that you can describe a site and have it, not the price.
-// Kept under about 155 characters, which is where Google starts cutting.
+// No "free" anywhere. It invites a comparison on price, when the reason to
+// use this is that you can describe a site and then have one.
 const TITLE = "Lypo · website builder";
-const DESCRIPTION =
-  "Just build it. Describe what you want in plain words and get a real website you can publish today. No code, no tutorials, no gatekeeping.";
+const DESCRIPTION = "Just build it.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(appOrigin()),
