@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { INTERVIEWS, INTERVIEW, type Question } from "@/lib/interviews";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { checkOrderingLink } from "@/lib/links";
 
 /**
  * A turn in the conversation, belonging to one page.
@@ -1625,12 +1626,18 @@ document.addEventListener("click", function (e) {
 
   function nextQuestion() {
     const updated = [...answers];
+    const rawAnswer = answerDraft.trim();
+    const linkCheck = /link/i.test(interview[qIndex]?.q ?? "") && rawAnswer
+      ? checkOrderingLink(rawAnswer)
+      : null;
     updated[qIndex] =
       interview[qIndex]?.kind === "menu"
         ? serializeMenu(menuRows)
         : interview[qIndex]?.kind === "hours"
           ? serializeHours(hoursRows)
-          : answerDraft.trim();
+          : linkCheck?.ok
+            ? linkCheck.url
+            : rawAnswer;
     setAnswers(updated);
 
     // Jumped in from the review screen to fix one answer. Go back there.
@@ -2009,6 +2016,7 @@ document.addEventListener("click", function (e) {
     // The priced grid is reused for menus, service lists and product lists,
     // so its labels follow whatever this question is actually collecting.
     const noun = NOUNS[current.itemNoun ?? "item"];
+    const isLinkQuestion = /link/i.test(current.q);
     return (
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-5 sm:p-8">
         <button
@@ -2321,6 +2329,29 @@ document.addEventListener("click", function (e) {
               placeholder="type your answer, or tap the mic and talk…"
               className="mt-6 w-full resize-y rounded-xl border border-line bg-paper p-4 text-sm leading-relaxed text-ink outline-none focus:border-flame"
             />
+            {/* A link goes on a real customer's path, so it gets checked
+                before it is accepted rather than after it is published. */}
+            {isLinkQuestion && answerDraft.trim() && (
+              (() => {
+                const check = checkOrderingLink(answerDraft);
+                if (!check.ok) {
+                  return (
+                    <p className="mt-2 text-sm text-flame">{check.reason}</p>
+                  );
+                }
+                return check.known ? (
+                  <p className="mt-2 text-sm text-ink-soft">
+                    Recognised: {check.host}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm text-ink-soft">
+                    We do not recognise {check.host}. Open it yourself and
+                    check it is the right ordering page before publishing, we
+                    cannot tell whether a site is genuine.
+                  </p>
+                );
+              })()
+            )}
             <button
               type="button"
               onClick={() => dictate((t) => setAnswerDraft((prev) => prev + t))}
@@ -2340,7 +2371,9 @@ document.addEventListener("click", function (e) {
             type="button"
             onClick={nextQuestion}
             disabled={
-              current.optional
+              isLinkQuestion && answerDraft.trim()
+                ? !checkOrderingLink(answerDraft).ok
+                : current.optional
                 ? false
                 : current.kind === "menu"
                   ? filledMenu.filter((r) => r.kind === "item").length === 0

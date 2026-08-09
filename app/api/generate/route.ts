@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { editPage, generatePageStreamed } from "@/lib/model";
+import { stripDangerousHrefs } from "@/lib/links";
 
 /**
  * Generating a page takes sixty to ninety seconds, and longer for a long
@@ -318,7 +319,18 @@ export async function POST(request: Request) {
 
   // Persisted only once a complete document is in hand, so a failed or
   // half-written generation never touches the project.
-  async function persist(html: string, summary: string) {
+  async function persist(rawHtml: string, summary: string): Promise<string> {
+    // A generated page is arbitrary HTML from a model, and it is served on
+    // the owner's own domain. The prompt forbids invented links, but a rule
+    // in a prompt is not a guarantee, and a javascript: href would run with
+    // that site's origin. Cheap to enforce for real, so enforce it.
+    const { html, removed } = stripDangerousHrefs(rawHtml);
+    if (removed > 0) {
+      console.warn(
+        `stripped ${removed} unsafe link${removed === 1 ? "" : "s"} from ${pageName}`,
+      );
+    }
+
   const turns = [
     { role: "user", content: message, page: pageName },
     { role: "assistant", content: summary, page: pageName },
@@ -396,6 +408,8 @@ export async function POST(request: Request) {
     { user_id: userId, day: today, count: used + 1 },
     { onConflict: "user_id,day" },
   );
+
+    return html;
   }
 
   // Streamed as newline-delimited JSON so the builder can show that work is
@@ -432,8 +446,10 @@ export async function POST(request: Request) {
           return;
         }
 
-        await persist(result.html, result.summary);
-        send({ t: "done", html: result.html, summary: result.summary });
+        // The stored html, not the raw model output, so what the preview
+        // shows is exactly what was saved and what visitors will get.
+        const savedHtml = await persist(result.html, result.summary);
+        send({ t: "done", html: savedHtml, summary: result.summary });
       } catch (e) {
         console.error("generate failed:", e);
         send({
