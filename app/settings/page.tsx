@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { EmailChangeForm } from "@/components/EmailChangeForm";
 import { StripeConnectCard } from "@/components/StripeConnectCard";
 import { SignOutButton } from "@/components/SignOutButton";
+import { PAYMENTS_ENABLED } from "@/lib/features";
 
 export default async function Settings() {
   const supabase = await createClient();
@@ -57,7 +58,9 @@ export default async function Settings() {
           <EmailChangeForm currentEmail={user.email ?? ""} />
         </div>
 
-        <StripeConnectCard connected={!!stripeAccount?.account_id} />
+        {PAYMENTS_ENABLED && (
+          <StripeConnectCard connected={!!stripeAccount?.account_id} />
+        )}
 
         <div className="mt-14 border-t border-line pt-6 text-sm">
           <SignOutButton />

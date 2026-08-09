@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { PAYMENTS_ENABLED } from "@/lib/features";
 
+// Refused while payments are off, so a page published earlier cannot still
+// reach checkout. The UI is hidden too, but the endpoint is what matters.
 export async function POST() {
+  if (!PAYMENTS_ENABLED) {
+    return NextResponse.json(
+      { error: "Payments aren't switched on yet." },
+      { status: 503 },
+    );
+  }
+
   if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json(
       { error: "Payments are not configured yet (missing Stripe key)." },

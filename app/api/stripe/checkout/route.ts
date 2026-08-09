@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { siteUrlFor } from "@/lib/site-url";
+import { PAYMENTS_ENABLED } from "@/lib/features";
 
 // Creates a checkout session that pays the SITE OWNER's connected account.
 // Called from published sites when a visitor clicks a .lypo-pay button.
+// Refused while payments are off, so a page published earlier cannot still
+// reach checkout. The UI is hidden too, but the endpoint is what matters.
 export async function POST(request: Request) {
+  if (!PAYMENTS_ENABLED) {
+    return NextResponse.json(
+      { error: "Payments aren't switched on yet." },
+      { status: 503 },
+    );
+  }
+
   if (!process.env.STRIPE_SECRET_KEY) {
     return NextResponse.json(
       { error: "Payments aren't enabled yet." },

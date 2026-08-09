@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { editPage, generatePageStreamed } from "@/lib/model";
 import { stripDangerousHrefs } from "@/lib/links";
+import { PAYMENTS_ENABLED } from "@/lib/features";
 
 /**
  * Generating a page takes sixty to ninety seconds, and longer for a long
@@ -289,8 +290,11 @@ export async function POST(request: Request) {
     ? 'This is a MULTI-PAGE site. Every page must include the same site header with a nav menu. Nav links between pages MUST be written exactly as: <a data-lypo-page="pagename" href="#">Label</a> (lowercase page name in data-lypo-page). Lypo turns these into real page navigation. Never use regular href links for internal pages.'
     : "WEBSITES are strictly ONE page with NO navigation tabs, menu bar links, or multi-page structure at the top, one continuous scrolling page. Do not add a nav menu with section links unless the user explicitly asks.";
 
-  const paymentsRule =
-    paymentsAllowed && paymentsEnabled
+  const paymentsRule = !PAYMENTS_ENABLED
+    ? // Off until after launch. Stated as a fact about the site rather than
+      // as a setting to go and change, because there is no switch to find.
+      'This site CANNOT take money. Do NOT add payment buttons, donate buttons, checkout forms, buy buttons, tip jars, price-and-pay widgets, or links to an outside payment page, even if the user asks directly. If they ask, say in the summary that taking payments is not available yet, and build the rest of what they asked for. Where money would have been the action, use the phone number or the contact form instead.'
+    : paymentsAllowed && paymentsEnabled
       ? 'Payments are ENABLED for this site. If the user asks for payments or donations, add a clearly styled button with class "lypo-pay" and data-amount attribute (in cents, e.g. data-amount="1000" for $10). Lypo wires real payments to it. Do not embed any external payment forms.'
       : !paymentsEnabled
       ? 'The site owner has NOT enabled payments for this project. Do NOT add any payment buttons, donate buttons, checkout forms, buy buttons, tip jars, or any way to accept money, even if the user asks. If the user requests a payment or donation feature, respond with a summary explaining that they need to enable payments in their project settings first, and skip the payment element entirely.'

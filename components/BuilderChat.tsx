@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { INTERVIEWS, INTERVIEW, type Question } from "@/lib/interviews";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { checkExternalLink } from "@/lib/links";
+import { PAYMENTS_ENABLED } from "@/lib/features";
 
 /**
  * A turn in the conversation, belonging to one page.
@@ -3114,6 +3115,7 @@ document.addEventListener("click", function (e) {
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="mx-auto max-w-lg space-y-3 pb-4">
+                {PAYMENTS_ENABLED && (
                 <SettingRow
                   title="payments"
                   body={
@@ -3130,6 +3132,7 @@ document.addEventListener("click", function (e) {
                     />
                   }
                 />
+                )}
 
                 <SettingRow
                   title="multi-page site"
