@@ -14,12 +14,18 @@ const inter = Inter({
   variable: "--font-body",
 });
 
-// The browser tab, the Google result, and every shared link. Kept to the
-// three words on purpose: the domain already shows above it in search and
-// beside it in a tab, so repeating the brand in the title only crowds it.
-const TITLE = "just build it";
+// The browser tab, the Google result, and every shared link.
+//
+// The title says what Lypo is, because a stranger seeing it in search
+// results has no idea otherwise. The line the site actually leads with
+// carries the description instead, where there is room for it.
+//
+// Not led with "free": it invites the wrong comparison, and the reason to
+// use this is that you can describe a site and have it, not the price.
+// Kept under about 155 characters, which is where Google starts cutting.
+const TITLE = "Lypo · website builder";
 const DESCRIPTION =
-  "Free AI-powered app and website building for people building for others. No code. No cost. No gatekeeping.";
+  "Just build it. Describe what you want in plain words and get a real website you can publish today. No code, no tutorials, no gatekeeping.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(appOrigin()),
