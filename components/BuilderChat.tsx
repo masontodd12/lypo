@@ -1109,7 +1109,14 @@ document.addEventListener("click", function (e) {
         return data.html as string;
       }
     } catch {
-      setError("Couldn't reach the server. Check your connection.");
+      // The connection dropping mid-build is usually the request running
+      // long, not the user being offline, and telling someone to check their
+      // connection when it is fine sends them looking in the wrong place.
+      setError(
+        navigator.onLine
+          ? "The build stopped before it finished. Nothing was changed. Try again, and if it keeps happening ask for a shorter description."
+          : "You appear to be offline. Nothing was changed.",
+      );
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setBusy(false);

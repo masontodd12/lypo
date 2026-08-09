@@ -2,6 +2,17 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { editPage, generatePageStreamed } from "@/lib/model";
 
+/**
+ * Generating a page takes sixty to ninety seconds, and longer for a long
+ * brief. Without this the platform's short default applies and the function
+ * is killed mid-request, which reaches the browser as a dropped connection
+ * and reads to the user as "couldn't reach the server".
+ *
+ * 300 is the ceiling for Node functions on Vercel. Time is only spent when a
+ * generation actually runs, so a high limit costs nothing on fast requests.
+ */
+export const maxDuration = 300;
+
 const VERSIONS_KEPT = 30;
 
 const SYSTEM_PROMPT = `You are the site generator behind Lypo, a tool that lets non-technical people build websites by describing them. Your users are fundraiser organizers, small business owners, churches, families, community groups. The site you make is often their only web presence, and most of their visitors are on phones.
@@ -157,6 +168,21 @@ export async function POST(request: Request) {
   const pageName: string = typeof page === "string" && page ? page : "home";
   if (!projectId || !message) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  // Roughly 18,000 words. Generous: a full interview with a long story and a
+  // pasted menu lands nowhere near it. Past this the model spends the whole
+  // budget reading rather than writing, and the request runs long enough to
+  // be killed, which reaches the browser as a dropped connection.
+  const MAX_MESSAGE_CHARS = 100_000;
+  if (typeof message !== "string" || message.length > MAX_MESSAGE_CHARS) {
+    return NextResponse.json(
+      {
+        error:
+          "That is more than we can read in one go. Trim it down, or build the page first and add the rest as follow-up changes.",
+      },
+      { status: 413 },
+    );
   }
 
   const { data: project } = await supabase

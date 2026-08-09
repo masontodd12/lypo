@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/ratelimit";
 
+// Another model call; see the generate route.
+export const maxDuration = 120;
+
 const MODEL = "gpt-5-mini";
 
 const ROAST_PROMPT = `You are the honest friend behind Lypo's roast mode. The user is about to publish their site and wants the truth before strangers see it.

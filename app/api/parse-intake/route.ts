@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/ratelimit";
 import { getInterview, type Question } from "@/lib/interviews";
 
+// Reading a long pasted brief is a model call, so it needs the same headroom
+// as generation rather than the platform's short default.
+export const maxDuration = 120;
+
 const MODEL = "gpt-5-mini";
 const MAX_CHARS = 20000;
 const MIN_CHARS = 40;
