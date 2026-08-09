@@ -32,6 +32,7 @@ type OnboardingDraft = {
   menuRows?: MenuRow[];
   hoursRows?: HourRow[];
   photos?: string[];
+  extraPages?: string[];
   logo?: string | null;
   dump?: string;
   leftover?: string;
@@ -140,6 +141,41 @@ function lastHeadingIn(partial: string): string | null {
     .replace(/<$/, "")
     .trim();
   return text || null;
+}
+
+/**
+ * Pages worth offering for each kind of site, and which are on by default.
+ *
+ * Only restaurants used to get a second page, and only ever "menu", so
+ * anyone who wanted an about or a contact page had no way to say so. These
+ * are suggestions: everything is togglable and anything can be added.
+ */
+const SUGGESTED_PAGES: Record<
+  string,
+  { name: string; on?: boolean }[]
+> = {
+  restaurant: [{ name: "menu", on: true }, { name: "about" }, { name: "contact" }],
+  foodtruck: [{ name: "menu", on: true }, { name: "where to find us" }],
+  barbershop: [{ name: "services" }, { name: "gallery" }, { name: "contact" }],
+  business: [{ name: "services" }, { name: "about" }, { name: "contact" }],
+  church: [{ name: "visit" }, { name: "events" }, { name: "about" }],
+  portfolio: [{ name: "work" }, { name: "about" }, { name: "contact" }],
+  shop: [{ name: "products" }, { name: "about" }, { name: "contact" }],
+  event: [{ name: "details" }, { name: "rsvp" }],
+  fundraiser: [{ name: "updates" }, { name: "about" }],
+  memorial: [{ name: "service" }, { name: "guestbook" }],
+  sports: [{ name: "schedule" }, { name: "roster" }, { name: "contact" }],
+  community: [{ name: "events" }, { name: "join" }],
+};
+
+/** A page name safe to use as a slug and a nav label. */
+export function toPageName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
 }
 
 /** Labels for the priced grid, which collects menus, services or products. */
@@ -612,6 +648,37 @@ export function BuilderChat({
   const streamedRef = useRef("");
   const [streamedChars, setStreamedChars] = useState(0);
   const [buildDetail, setBuildDetail] = useState("");
+  /**
+   * The page as it was immediately before the last edit landed, so one tap
+   * puts it back. Held in memory rather than fetched, because the moment
+   * this is wanted is the moment the change appears and waiting on a round
+   * trip to find out what the previous version was defeats the point.
+   */
+  const [undoPoint, setUndoPoint] = useState<{
+    page: string;
+    html: string;
+    label: string;
+  } | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  /**
+   * Pages to build alongside home, chosen on the last screen before building.
+   *
+   * Seeded from the defaults for this kind of site. Resuming a draft has to
+   * seed too, not just the moment the type is picked, or coming back to a
+   * half-finished restaurant would quietly drop the menu page.
+   */
+  const [extraPages, setExtraPages] = useState<string[]>(
+    draft?.extraPages ??
+      (SUGGESTED_PAGES[draft?.siteType ?? ""] ?? [])
+        .filter((p) => p.on)
+        .map((p) => p.name),
+  );
+  /**
+   * How many generations are in flight. A boolean broke once pages started
+   * building concurrently: the first one to finish cleared it while the rest
+   * were still running, which re-enabled the composer mid-build.
+   */
+  const inFlight = useRef(0);
   const [editMode, setEditMode] = useState(false);
   const [picked, setPicked] = useState<{ tag: string; text: string } | null>(null);
   const [multiPage, setMultiPage] = useState(initialMultiPage);
@@ -747,6 +814,50 @@ export function BuilderChat({
       }
     } finally {
       setSettingsBusy(false);
+    }
+  }
+
+  /**
+   * Puts the page back to how it was before the last edit.
+   *
+   * Written to the project as well as to the screen, so it survives a
+   * reload; an undo that only holds until refresh is worse than none,
+   * because it looks like it worked.
+   */
+  async function undoLastEdit() {
+    if (!undoPoint || undoing || busy) return;
+    const { page, html: previous } = undoPoint;
+    setUndoing(true);
+    try {
+      const restored = { ...pages, [page]: previous };
+      setPages(restored);
+      if (page === currentPageRef.current) setHtml(previous);
+
+      const supabase = createClient();
+      const { error: dbError } = await supabase
+        .from("projects")
+        .update({
+          pages: restored,
+          html: restored.home ?? previous,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", projectId);
+
+      if (dbError) {
+        setError("Couldn't undo that. Try again.");
+        return;
+      }
+      setUndoPoint(null);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Put the page back to how it was before that change.",
+          page,
+        },
+      ]);
+    } finally {
+      setUndoing(false);
     }
   }
 
@@ -1057,6 +1168,7 @@ document.addEventListener("click", function (e) {
     silent = false,
   ): Promise<string | null> {
     const targetPage = pageOverride ?? currentPage;
+    inFlight.current += 1;
     setBusy(true);
     setError("");
     streamedRef.current = "";
@@ -1102,6 +1214,15 @@ document.addEventListener("click", function (e) {
         setError(data?.error ?? "Something went wrong. Try again.");
         setMessages((prev) => prev.slice(0, -1));
       } else {
+        // Captured before the new markup replaces it.
+        const before = pages[targetPage];
+        if (!silent && typeof before === "string" && before.trim()) {
+          setUndoPoint({
+            page: targetPage,
+            html: before,
+            label: message.length > 60 ? message.slice(0, 60) + "…" : message,
+          });
+        }
         setPages((prev) => ({ ...prev, [targetPage]: data.html }));
         if (!silent) {
           if (!html && buildStart.current) {
@@ -1138,15 +1259,13 @@ document.addEventListener("click", function (e) {
       );
       setMessages((prev) => prev.slice(0, -1));
     } finally {
-      setBusy(false);
+      inFlight.current = Math.max(0, inFlight.current - 1);
+      if (inFlight.current === 0) setBusy(false);
     }
     return null;
   }
 
   // Purposes that ship as a real multi-page site instead of one scroll.
-  const MULTI_PAGE_PURPOSES: Record<string, string[]> = {
-    restaurant: ["menu"],
-  };
 
   async function startBuild() {
     const style = STYLES.find((s) => s.id === vibe);
@@ -1160,11 +1279,12 @@ document.addEventListener("click", function (e) {
     // The logo instruction is added server-side from logoUrl, so it applies
     // to every later edit too, not just this first build.
 
-    const extraPages = MULTI_PAGE_PURPOSES[siteType ?? ""] ?? [];
+    // Whatever they picked on the last screen, home is always first.
+    const pagesToBuild = extraPages.map(toPageName).filter(Boolean);
 
     // Multi-page purposes need the flag set before the first build so the
     // generator writes nav links instead of section anchors.
-    if (extraPages.length > 0 && !multiPage) {
+    if (pagesToBuild.length > 0 && !multiPage) {
       setMultiPage(true);
       const supabase = createClient();
       await supabase
@@ -1176,15 +1296,15 @@ document.addEventListener("click", function (e) {
     const kindNote =
       kind === "webapp"
         ? "This is a WEB APP: an interactive single-page tool with working JavaScript functionality, not a brochure site."
-        : extraPages.length > 0
-          ? `This is a MULTI-PAGE WEBSITE. You are building the HOME page. The site also has these pages: ${extraPages.join(", ")}. Include a header nav linking to every page.`
+        : pagesToBuild.length > 0
+          ? `This is a MULTI-PAGE WEBSITE. You are building the HOME page. The site also has these pages: ${pagesToBuild.join(", ")}. Include a header nav linking to every page.`
           : "This is a WEBSITE: a single-page site with NO navigation tabs or menu links at the top, one continuous scrolling page.";
 
     // Every page is generated before anything is revealed, so the user
     // never sees a half-built site or a page that is still being written.
     const started = Date.now();
     setInitialBuilding(true);
-    setBuildTotal(1 + extraPages.length);
+    setBuildTotal(1 + pagesToBuild.length);
     setBuildDone(0);
     setBuildPhase("home");
 
@@ -1201,22 +1321,28 @@ document.addEventListener("click", function (e) {
       if (!homeHtml) return;
       setBuildDone(1);
 
-      const failed: string[] = [];
-      for (const page of extraPages) {
-        setBuildPhase(page);
-        const built = await generate(
-          `Create the "${page}" page for this site. Match the home page's style, fonts, colors, header, and nav exactly.${
-            page === "menu"
-              ? " Lay out the full menu using the items and prices the owner gave, grouped into clear sections with real headings. Prices right-aligned or clearly separated from item names. No invented items, no invented prices. If they did not give a price for something, leave the price off rather than guessing."
-              : ""
-          }`,
-          undefined,
-          page,
-          true,
-        );
-        if (!built) failed.push(page);
-        setBuildDone((n) => n + 1);
-      }
+      // Built together rather than one after another. Sequentially, four
+      // pages meant four to six minutes of staring at a spinner; the pages
+      // are independent once the home page exists to match, so there is no
+      // reason to make someone wait for them in turn.
+      setBuildPhase(pagesToBuild.join(", "));
+      const results = await Promise.all(
+        pagesToBuild.map(async (page) => {
+          const built = await generate(
+            `Create the "${page}" page for this site. Match the home page's style, fonts, colors, header, and nav exactly.${
+              page === "menu"
+                ? " Lay out the full menu using the items and prices the owner gave, grouped into clear sections with real headings. Prices right-aligned or clearly separated from item names. No invented items, no invented prices. If they did not give a price for something, leave the price off rather than guessing."
+                : ""
+            }`,
+            undefined,
+            page,
+            true,
+          );
+          setBuildDone((n) => n + 1);
+          return { page, ok: !!built };
+        }),
+      );
+      const failed = results.filter((r) => !r.ok).map((r) => r.page);
 
       // Reveal the finished site in one step.
       setCurrentPage("home");
@@ -1364,6 +1490,11 @@ document.addEventListener("click", function (e) {
               type="button"
               onClick={() => {
                 setSiteType(type.id);
+                setExtraPages(
+                  (SUGGESTED_PAGES[type.id] ?? [])
+                    .filter((p) => p.on)
+                    .map((p) => p.name),
+                );
                 setStep("vibe");
                 saveDraft({ step: "vibe", siteType: type.id });
               }}
@@ -1470,7 +1601,7 @@ document.addEventListener("click", function (e) {
     const tail = extra.trim() ? `\n\nalso worth knowing: ${extra.trim()}` : "";
     setDescription(`${initialIdea ? initialIdea + ". " : ""}${combined}${tail}`);
     setStep("photos");
-    saveDraft({ step: "photos", answers: final, leftover: extra });
+    saveDraft({ step: "photos", answers: final, leftover: extra, extraPages });
   }
 
   function nextQuestion() {
@@ -2298,6 +2429,58 @@ document.addEventListener("click", function (e) {
             ))}
           </div>
         )}
+        {/* Chosen here rather than inferred, so someone who wants an about
+            page gets one instead of having to ask for it afterwards. */}
+        <p className="mt-10 text-sm font-medium">which pages do you want?</p>
+        <p className="mt-1 text-xs text-ink-soft">
+          Home is always built. Add any others and they all get the same
+          header and nav.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="rounded-full border border-line px-4 py-2 text-sm text-faint">
+            home
+          </span>
+          {Array.from(
+            new Set([
+              ...(SUGGESTED_PAGES[siteType ?? ""] ?? []).map((p) => p.name),
+              ...extraPages,
+            ]),
+          ).map((name) => {
+            const on = extraPages.includes(name);
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() =>
+                  setExtraPages((prev) =>
+                    on ? prev.filter((p) => p !== name) : [...prev, name],
+                  )
+                }
+                aria-pressed={on}
+                className={`rounded-full border px-4 py-2 text-sm transition ${
+                  on
+                    ? "border-flame bg-flame text-paper"
+                    : "border-line text-ink-soft hover:border-flame hover:text-flame"
+                }`}
+              >
+                {name}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => {
+              const raw = prompt("Name the page (like about, prices, events):");
+              const name = toPageName(raw ?? "");
+              if (!name || name === "home" || extraPages.includes(name)) return;
+              setExtraPages((prev) => [...prev, name]);
+            }}
+            className="rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame"
+          >
+            + another page
+          </button>
+        </div>
+
         {error && <p className="mt-4 text-sm text-flame">{error}</p>}
         <button
           type="button"
@@ -2307,12 +2490,11 @@ document.addEventListener("click", function (e) {
         >
           build it →
         </button>
-        {(MULTI_PAGE_PURPOSES[siteType ?? ""] ?? []).length > 0 && (
-          <p className="mt-3 text-xs text-faint">
-            Building your home page and menu page. Takes a little longer than
-            one page.
-          </p>
-        )}
+        <p className="mt-3 text-xs text-faint">
+          {extraPages.length > 0
+            ? `Building ${1 + extraPages.length} pages. They all appear together when the whole site is finished.`
+            : "Building your home page."}
+        </p>
       </div>
     );
   }
@@ -2462,6 +2644,23 @@ document.addEventListener("click", function (e) {
                   ? `writing… ${buildDetail}`
                   : `writing… ${Math.round(streamedChars / 100) / 10}k characters`
                 : "building…"}
+            </div>
+          )}
+          {/* Sits right under the message announcing the change, which is
+              where someone looks the moment they decide they hate it. */}
+          {undoPoint && !busy && (
+            <div className="flex items-center gap-3 rounded-2xl border border-line px-4 py-2.5">
+              <span className="min-w-0 flex-1 truncate text-xs text-faint">
+                changed the {undoPoint.page} page
+              </span>
+              <button
+                type="button"
+                onClick={undoLastEdit}
+                disabled={undoing}
+                className="shrink-0 text-xs font-medium text-flame transition hover:underline disabled:opacity-40"
+              >
+                {undoing ? "undoing…" : "undo"}
+              </button>
             </div>
           )}
           {error && <p className="text-sm text-flame">{error}</p>}
