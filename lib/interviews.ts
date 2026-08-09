@@ -63,6 +63,11 @@ export const RESTAURANT_INTERVIEW: Question[] = [
     hint: "For orders or reservations. We make it tap-to-call on phones.",
   },
   {
+    q: "your online ordering link",
+    hint: "Paste the link customers use to order, from Toast, Square, Clover, DoorDash, anywhere. Leave it blank if you do not take online orders and we will leave the button off entirely rather than sending people to a dead page.",
+    optional: true,
+  },
+  {
     q: "your menu",
     hint: "Add each item and what it costs. Group them into sections like appetizers, plates, or drinks.",
     kind: "menu",
@@ -103,6 +108,11 @@ const FOODTRUCK_INTERVIEW: Question[] = [
   {
     q: "how do people reach you",
     hint: "Phone for catering or big orders, and the social account where you post your location.",
+  },
+  {
+    q: "your online ordering link",
+    hint: "Paste the link customers use to order, from Toast, Square, Clover, DoorDash, anywhere. Leave it blank if you do not take online orders and we will leave the button off entirely rather than sending people to a dead page.",
+    optional: true,
   },
 ];
 

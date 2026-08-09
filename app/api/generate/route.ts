@@ -39,6 +39,7 @@ FORBIDDEN (these are the signature of AI-generated sites, never produce them):
 - Filler copy ("Bold care. Big love.", "Empowering communities", "Your journey starts here"). If you lack a real fact, write less.
 - Visible captions, titles, or labels on photos, ever. No text under, over, or beside an image naming what it is ("Community photo", "Our kitchen", "Jane and her dog"). Photos run uncaptioned. Describe the image only in its alt attribute, which is never rendered as visible text.
 - Fake statistics, fake testimonials, invented dollar amounts or dates. Never invent a number.
+- Invented destinations on an <a>. Never write a link href you were not given: no guessed ordering page, no made-up booking system, no placeholder social profile, no <a href="#"> pretending to be a real destination. A link that goes nowhere is worse than no link: a customer taps it, lands on an error, and assumes the business is closed or fake. Given no URL, leave the button out and point at the phone number or address instead. (Two things this does not mean: forms still use action="#", and internal page nav still uses <a data-lypo-page="..." href="#">. Both are correct and required. The rule is about sending a visitor to an outside address you invented.)
 - Stock CTA labels ("Get Started", "Learn More"). Say the actual action: "Donate $25", "Book a cut", "See Sunday times".
 
 REQUIRED:
@@ -117,6 +118,7 @@ HOME page must include, in roughly this order:
 - Address as text plus a map link (https://maps.google.com/?q=<url-encoded address>)
 - Phone as a tap-to-call link: <a href="tel:+1XXXXXXXXXX">
 - A clear link to the menu page
+- An "order online" button ONLY if an ordering link was actually given. If one was, use that exact URL. If none was given, there is no ordering button anywhere on the site: no "Order Online", no "Order Now", no link to a delivery app you assumed they use. Point people at the phone number instead.
 - Photos of the food or the room if any were given
 - A CUSTOMER COMMENTS section near the bottom, before the footer. Heading along the lines of "leave us a comment" or "tell us how we did". Inside a real <form action="#">, with a visible <label> for every field:
   - <input name="name" type="text"> labeled Your name
