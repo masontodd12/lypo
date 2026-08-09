@@ -317,24 +317,52 @@ export async function POST(request: Request) {
   // Persisted only once a complete document is in hand, so a failed or
   // half-written generation never touches the project.
   async function persist(html: string, summary: string) {
-  // Appended to everything already stored, not to the ten-turn window, and
-  // capped only to keep one row from growing without bound.
-  const newMessages = [
-    ...allTurns,
+  const turns = [
     { role: "user", content: message, page: pageName },
     { role: "assistant", content: summary, page: pageName },
-  ].slice(-400);
+  ];
 
-  pagesMap[pageName] = html;
-  await supabase
-    .from("projects")
-    .update({
-      pages: pagesMap,
-      html: pagesMap.home ?? html,
-      messages: newMessages,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", projectId);
+  // Merges this one page under a row lock. Extra pages are generated
+  // concurrently, and writing the whole pages object back would mean the
+  // last request to finish silently erased the others.
+  const { error: mergeError } = await supabase.rpc("save_project_page", {
+    pid: projectId,
+    page_name: pageName,
+    page_html: html,
+    new_turns: turns,
+  });
+
+  if (mergeError) {
+    // The function is missing until the migration runs. Re-reading right
+    // before writing does not make this safe, but it shrinks the window
+    // from the length of a generation to a few milliseconds.
+    console.error("save_project_page unavailable, falling back:", mergeError.message);
+    const { data: fresh } = await supabase
+      .from("projects")
+      .select("pages, messages, html")
+      .eq("id", projectId)
+      .single();
+
+    const freshPages: Record<string, string> = {
+      ...(pagesMap as Record<string, string>),
+      ...((fresh?.pages as Record<string, string>) ?? {}),
+      [pageName]: html,
+    };
+    const freshTurns = [
+      ...(Array.isArray(fresh?.messages) ? fresh.messages : allTurns),
+      ...turns,
+    ].slice(-400);
+
+    await supabase
+      .from("projects")
+      .update({
+        pages: freshPages,
+        html: pageName === "home" ? html : (fresh?.html ?? freshPages.home ?? html),
+        messages: freshTurns,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", projectId);
+  }
 
   // ----- Version snapshot (best-effort, never blocks the response) -----
   try {

@@ -112,6 +112,64 @@ alter default privileges in schema public
 alter default privileges in schema public
   grant all privileges on sequences to service_role;
 
+-- ---------- saving one page without clobbering the others ----------
+-- Extra pages are generated concurrently, and each request used to read the
+-- whole pages object, add its own key, and write the whole thing back. Three
+-- pages finishing at once meant two of them were silently lost: last write
+-- wins. Same for the chat history.
+--
+-- This merges a single page in one statement, under a row lock, so
+-- concurrent saves queue instead of overwriting each other.
+--
+-- SECURITY INVOKER (the default) on purpose: row level security still
+-- applies, so this can only ever touch a project the caller owns.
+create or replace function save_project_page(
+  pid uuid,
+  page_name text,
+  page_html text,
+  new_turns jsonb default '[]'::jsonb
+)
+returns void
+language plpgsql
+set search_path = public
+as $$
+declare
+  merged jsonb;
+  total integer;
+begin
+  -- Locks the row for the rest of the transaction, so a concurrent save of
+  -- another page waits here rather than reading a stale copy.
+  select coalesce(messages, '[]'::jsonb) || coalesce(new_turns, '[]'::jsonb)
+    into merged
+    from projects
+   where id = pid
+   for update;
+
+  if merged is null then
+    return; -- no such project, or not visible to this caller under RLS
+  end if;
+
+  -- Keep the newest 400 turns so one row cannot grow without bound.
+  total := jsonb_array_length(merged);
+  if total > 400 then
+    select coalesce(jsonb_agg(e ORDER BY i), '[]'::jsonb)
+      into merged
+      from jsonb_array_elements(merged) with ordinality AS t(e, i)
+     where i > total - 400;
+  end if;
+
+  update projects
+     set pages = coalesce(pages, '{}'::jsonb)
+                 || jsonb_build_object(page_name, page_html),
+         html = case when page_name = 'home' then page_html else html end,
+         messages = merged,
+         updated_at = now()
+   where id = pid;
+end;
+$$;
+
+grant execute on function save_project_page(uuid, text, text, jsonb) to authenticated;
+
 -- ---------- admin: featured sites ----------
 -- The gallery is hand-written mockups. This lets a real published site be
 -- shown there instead, which is far more convincing than an illustration.

@@ -1326,8 +1326,15 @@ document.addEventListener("click", function (e) {
       // are independent once the home page exists to match, so there is no
       // reason to make someone wait for them in turn.
       setBuildPhase(pagesToBuild.join(", "));
-      const results = await Promise.all(
-        pagesToBuild.map(async (page) => {
+      // A few at a time. All at once is fine for two or three pages, but
+      // someone picking six would fire six simultaneous generations and
+      // invite a rate limit, which costs more time than it saves.
+      const LANES = 3;
+      const queue = [...pagesToBuild];
+      const results: { page: string; ok: boolean }[] = [];
+      await Promise.all(
+        Array.from({ length: Math.min(LANES, queue.length) }, async () => {
+          for (let page = queue.shift(); page; page = queue.shift()) {
           const built = await generate(
             `Create the "${page}" page for this site. Match the home page's style, fonts, colors, header, and nav exactly.${
               page === "menu"
@@ -1339,10 +1346,22 @@ document.addEventListener("click", function (e) {
             true,
           );
           setBuildDone((n) => n + 1);
-          return { page, ok: !!built };
+          results.push({ page, ok: !!built });
+          }
         }),
       );
       const failed = results.filter((r) => !r.ok).map((r) => r.page);
+
+      // A page that failed keeps its tab, empty, so it can be retried.
+      // Without this it simply was not there, and the only way back was to
+      // add a page with the same name and hope.
+      if (failed.length > 0) {
+        setPages((prev) => {
+          const next = { ...prev };
+          for (const page of failed) if (!next[page]) next[page] = "";
+          return next;
+        });
+      }
 
       // Reveal the finished site in one step.
       setCurrentPage("home");
@@ -3005,12 +3024,27 @@ document.addEventListener("click", function (e) {
               {!html ? (
                 // This page exists but has not been written yet. Showing an
                 // empty iframe here is what made new pages look blank.
-                <div className="flex min-h-0 flex-1 items-center justify-center">
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center">
                   <p className="text-sm text-faint">
                     {busy
                       ? `Building the ${currentPage} page…`
-                      : `The ${currentPage} page has not been built yet. Ask for it in the chat.`}
+                      : `The ${currentPage} page didn't build.`}
                   </p>
+                  {!busy && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        generate(
+                          `Create the "${currentPage}" page for this site. Match the home page's style, fonts, colors, header, and nav exactly.`,
+                          undefined,
+                          currentPage,
+                        )
+                      }
+                      className="rounded-full bg-flame px-5 py-2 text-sm font-medium text-paper transition hover:bg-flame-bright"
+                    >
+                      build it now
+                    </button>
+                  )}
                 </div>
               ) : device === "phone" ? (
                 <div className="flex min-h-0 flex-1 items-start justify-center overflow-hidden">
