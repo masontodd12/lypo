@@ -16,6 +16,40 @@ export type ModelResult =
 
 type Message = { role: string; content: unknown };
 
+type CallOutcome =
+  | { kind: "ok"; raw: string }
+  | { kind: "empty" | "truncated"; detail: string }
+  | {
+      kind: "http";
+      status: number;
+      detail: string;
+      retryAfterMs?: number;
+    };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Whether trying again could plausibly succeed.
+ *
+ * A rate limit and a server fault will pass; a malformed request, a bad key
+ * or an exhausted balance will fail identically every time, so retrying
+ * those only burns time the user is sitting through.
+ */
+function isRetryable(outcome: CallOutcome): boolean {
+  if (outcome.kind === "ok") return false;
+  if (outcome.kind !== "http") return true; // empty or truncated
+  return outcome.status === 429 || outcome.status >= 500;
+}
+
+/** Exponential with jitter, so parallel page builds do not retry in lockstep. */
+function backoffMs(attempt: number, outcome: CallOutcome): number {
+  if (outcome.kind === "http" && outcome.retryAfterMs) {
+    return Math.min(outcome.retryAfterMs, 30_000);
+  }
+  const base = Math.min(1000 * 2 ** attempt, 8000);
+  return base + Math.random() * 400;
+}
+
 function parse(raw: string) {
   const summaryMatch = raw.match(/<!--\s*summary:\s*([\s\S]*?)-->/i);
   const summary = summaryMatch ? summaryMatch[1].trim() : "Done. Take a look.";
@@ -42,10 +76,7 @@ async function callOnce(
   // A patch reply is a set of blocks, not a document, so the completeness
   // check that guards full generations does not apply to it.
   { requireCompleteHtml = true }: { requireCompleteHtml?: boolean } = {},
-): Promise<
-  | { kind: "ok"; raw: string }
-  | { kind: "empty" | "truncated" | "http"; detail: string }
-> {
+): Promise<CallOutcome> {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -60,7 +91,16 @@ async function callOnce(
   });
 
   if (!response.ok) {
-    return { kind: "http", detail: (await response.text()).slice(0, 500) };
+    // Retry-After is in seconds when the API sets it, and it is a better
+    // number than anything we would invent.
+    const header = response.headers.get("retry-after");
+    const retryAfterMs = header ? Number(header) * 1000 : undefined;
+    return {
+      kind: "http",
+      status: response.status,
+      retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : undefined,
+      detail: (await response.text()).slice(0, 500),
+    };
   }
 
   const data = await response.json();
@@ -384,12 +424,16 @@ export async function generatePage({
   let last = "unknown";
   for (let i = 0; i < plan.length; i++) {
     const { model, tokens } = plan[i];
-    let result;
+    let result: CallOutcome;
     try {
       result = await callOnce(model, system, messages, tokens);
     } catch (e) {
-      last = `network: ${e instanceof Error ? e.message : "failed"}`;
-      continue;
+      // A dropped connection is worth another go, after a pause.
+      result = {
+        kind: "http",
+        status: 503,
+        detail: `network: ${e instanceof Error ? e.message : "failed"}`,
+      };
     }
 
     if (result.kind === "ok") {
@@ -397,17 +441,23 @@ export async function generatePage({
       return { ok: true, html, summary, attempts: i + 1, model };
     }
 
-    last = `${result.kind}: ${result.detail}`;
+    last =
+      result.kind === "http"
+        ? `http ${result.status}: ${result.detail}`
+        : `${result.kind}: ${result.detail}`;
     console.error(
       `generate attempt ${i + 1}/${plan.length} failed (${model}, ${tokens} tok):`,
-      result.detail,
+      last,
     );
 
-    // A bad request will fail identically every time, so stop rather than
-    // burning the account's quota on it.
-    if (result.kind === "http" && /invalid|not found|model/i.test(result.detail)) {
-      break;
-    }
+    // A malformed request, a bad key or an exhausted balance fails the same
+    // way every time. Retrying only makes the user wait longer for it.
+    if (!isRetryable(result)) break;
+
+    // Waiting matters most for the case it is most tempting to skip: hitting
+    // a rate limit and immediately hammering it again is what turns one 429
+    // into three.
+    if (i < plan.length - 1) await sleep(backoffMs(i, result));
   }
 
   console.error(`generate gave up after ${plan.length} attempts, last: ${last}`);
