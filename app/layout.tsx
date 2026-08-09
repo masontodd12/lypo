@@ -14,7 +14,10 @@ const inter = Inter({
   variable: "--font-body",
 });
 
-const TITLE = "Lypo — let your passion out";
+// The browser tab, the Google result, and every shared link. Kept to the
+// three words on purpose: the domain already shows above it in search and
+// beside it in a tab, so repeating the brand in the title only crowds it.
+const TITLE = "just build it";
 const DESCRIPTION =
   "Free AI-powered app and website building for people building for others. No code. No cost. No gatekeeping.";
 
