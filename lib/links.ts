@@ -238,3 +238,39 @@ export function checkCustomDomain(raw: string): DomainCheck {
   const isApex = value.split(".").length === 2;
   return { ok: true, domain: value, isApex };
 }
+
+/**
+ * Removes layout declarations from :root and html blocks.
+ *
+ * A real observed failure: a generated page declared "max-width: 980px"
+ * inside the :root block, in among the custom properties. :root is html, so
+ * that clamped the whole document to 980px pinned to the left of the screen
+ * with the rest of the window empty. The intent was a --max-width token,
+ * dropping the leading dashes turned it into a page-breaking rule.
+ *
+ * Deliberately narrow: only width and max-width, only on :root and html, and
+ * never touching custom properties, which are the whole point of that block.
+ */
+export function stripRootLayout(html: string): {
+  html: string;
+  removed: number;
+} {
+  let removed = 0;
+  const cleaned = html.replace(
+    /(^|[},{;\s])((?::root|html)[^{}]{0,40})\{([^{}]*)\}/g,
+    (match, lead: string, selector: string, block: string) => {
+      const next = block.replace(
+        // A width or max-width that is not a custom property.
+        /(^|;)\s*(max-width|width)\s*:[^;}]*/gi,
+        (decl, sep: string) => {
+          // "--max-width: 980px" must survive; only the bare property goes.
+          if (/(^|;)\s*--/.test(decl)) return decl;
+          removed += 1;
+          return sep;
+        },
+      );
+      return `${lead}${selector}{${next}}`;
+    },
+  );
+  return { html: cleaned, removed };
+}

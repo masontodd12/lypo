@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { editPage, generatePageStreamed } from "@/lib/model";
-import { stripDangerousHrefs } from "@/lib/links";
+import { stripDangerousHrefs, stripRootLayout } from "@/lib/links";
 import { PAYMENTS_ENABLED } from "@/lib/features";
 
 /**
@@ -51,7 +51,8 @@ REQUIRED:
 - Every <img> gets width and height attributes, or an explicit aspect-ratio in CSS, so the layout does not jump around as photos arrive. Pair that with object-fit:cover so a portrait photo in a landscape slot is cropped rather than squashed.
 - Body text contrast 4.5:1 minimum. Visible :focus-visible outline. Tap targets 44px minimum.
 - Mobile-first CSS, no horizontal scroll at 320px, type scales with clamp().
-- Colors, fonts, spacing as CSS custom properties in :root.
+- Colors, fonts, spacing as CSS custom properties in :root. The :root block holds custom properties and nothing else: never put width, max-width, padding or any other real declaration in it. :root is the html element, so a width there clamps the entire document and pins the page to the left of the screen with the rest of the window empty. A width token is --max-width, with the dashes; without them it is a page-breaking rule.
+- The page fills the window. Sections and backgrounds run the full width; only the text inside them is constrained, by a centered container with margin-inline:auto. Never constrain html or body themselves. On a wide screen the design should look composed, not like a narrow column stranded against the left edge.
 - <title>, <meta name="description">, Open Graph tags (og:title, og:description, og:image using the first real photo if one exists, og:type), twitter card tags, viewport meta, lang attribute. These control how the link looks when texted, which is how these sites get shared.
 - A favicon, always. With a logo, use it: <link rel="icon" href="LOGO_URL">. Without one, inline an SVG data URI showing the business's initial in the accent color on the page background, for example <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23ACCENT'/%3E%3Ctext x='16' y='22' font-family='Georgia,serif' font-size='18' fill='%23FFFFFF' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E"> with the real initial and a real hex. A blank browser tab is one of the clearest signs a site was thrown together.
 - A canonical link tag pointing at the page's own address, so search engines index one copy rather than treating variants as duplicates.
@@ -328,12 +329,20 @@ export async function POST(request: Request) {
     // the owner's own domain. The prompt forbids invented links, but a rule
     // in a prompt is not a guarantee, and a javascript: href would run with
     // that site's origin. Cheap to enforce for real, so enforce it.
-    const { html, removed } = stripDangerousHrefs(rawHtml);
-    if (removed > 0) {
+    const safe = stripDangerousHrefs(rawHtml);
+    if (safe.removed > 0) {
       console.warn(
-        `stripped ${removed} unsafe link${removed === 1 ? "" : "s"} from ${pageName}`,
+        `stripped ${safe.removed} unsafe link${safe.removed === 1 ? "" : "s"} from ${pageName}`,
       );
     }
+    // A width on :root clamps the whole document and pins it to the left of
+    // the screen, which is a whole-page defect from one missing pair of
+    // dashes, so it is worth catching rather than only asking nicely.
+    const laidOut = stripRootLayout(safe.html);
+    if (laidOut.removed > 0) {
+      console.warn(`removed a page-clamping width from :root on ${pageName}`);
+    }
+    const html = laidOut.html;
 
   const turns = [
     { role: "user", content: message, page: pageName },
