@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local scratch: the migration is tracked as supabase-migration.sql
+supabase-run-this.sql
