@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { appOrigin } from "@/lib/site-url";
+import { SiteNavBridge } from "@/components/SiteNavBridge";
 
 /**
  * One renderer for every published page.
@@ -154,8 +155,10 @@ export async function renderSite(project: PublishedProject, pageHtml: string) {
     e.preventDefault();
     var page = link.getAttribute("data-lypo-page");
     if (!page) return;
-    var base = ${JSON.stringify(navBase)};
-    window.top.location.href = page === "home" ? (base || "/") : base + "/" + page;
+    // This frame is sandboxed without allow-top-navigation, so setting
+    // window.top.location here is blocked and the link does nothing. The
+    // wrapper page listens for this and navigates instead.
+    parent.postMessage({ lypoNavigate: page }, "*");
   }, true);
 
   // ---------- form capture ----------
@@ -309,6 +312,7 @@ export async function renderSite(project: PublishedProject, pageHtml: string) {
 
   return (
     <>
+      <SiteNavBridge base={navBase} />
       <iframe
         srcDoc={html}
         sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
