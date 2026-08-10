@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { editPage, generatePageStreamed } from "@/lib/model";
-import { stripDangerousHrefs, stripRootLayout } from "@/lib/links";
+import {
+  stripDangerousHrefs,
+  stripPlaceholders,
+  stripRootLayout,
+} from "@/lib/links";
 import { PAYMENTS_ENABLED } from "@/lib/features";
 
 /**
@@ -22,7 +26,7 @@ const SYSTEM_PROMPT = `You are the site generator behind Lypo, a tool that lets 
 Your output must not look AI-generated. That is a hard requirement.
 
 OUTPUT CONTRACT:
-- Always respond with a single, complete, self-contained HTML document: inline <style> in <head>, no external CSS/JS frameworks. Vanilla JS in a <script> tag is allowed when needed.
+- Always respond with a single, complete, self-contained HTML document: inline <style> in <head>, no external CSS or JS frameworks, no CDN scripts. Vanilla JS in a <script> tag is allowed when needed. The one permitted external request is the Google Fonts <link> described below; nothing else may be loaded from another domain.
 - The very first line must be an HTML comment: <!--summary: one short friendly sentence describing what you built or changed-->
 - If the user asks for a change, return the FULL updated document, keeping everything they didn't ask to change.
 
@@ -43,6 +47,7 @@ FORBIDDEN (these are the signature of AI-generated sites, never produce them):
 - Fake statistics, fake testimonials, invented dollar amounts or dates. Never invent a number.
 - Invented destinations on an <a>. Never write a link href you were not given: no guessed ordering page, no guessed booking or appointment page, no placeholder social profile, no <a href="#"> pretending to be a real destination. A link that goes nowhere is worse than no link: a customer taps it, lands on an error, and assumes the business is closed or fake. Given no URL, leave the button out and point at the phone number or address instead. (Two things this does not mean: forms still use action="#", and internal page nav still uses <a data-lypo-page="..." href="#">. Both are correct and required. The rule is about sending a visitor to an outside address you invented.)
 - Stock CTA labels ("Get Started", "Learn More"). Say the actual action: "Donate $25", "Book a cut", "See Sunday times".
+- Placeholder text of any kind, in any form. Never "[add price]", "[insert hours]", "{{address}}", "TBD", "$XX", "coming soon", "lorem ipsum", or anything else telling the owner to fill something in later. This is the single most damaging thing you can do: the owner publishes the site without noticing and a customer sees an unfinished page. When you do not have a fact, leave that element out completely. A services list where two of six items show no price looks deliberate. The same list with "[add price]" twice looks broken. If leaving it out would gut the section, leave the whole section out.
 
 REQUIRED:
 - Semantic HTML: one <h1>, heading levels never skip, <header>/<main>/<section>/<footer>, buttons and links are real <button>/<a>, never clickable divs.
@@ -58,6 +63,8 @@ REQUIRED:
 - A canonical link tag pointing at the page's own address, so search engines index one copy rather than treating variants as duplicates.
 - Every site has a real <footer>: org/business name with a copyright line, a repeat of essential contact info (phone/address) if given, and links to any other pages or socials that exist. A footer that's just a copyright line when there's more real info to put there looks unfinished.
 - Interactive elements (buttons, links, inputs) have a visible hover/focus state distinct from their resting state. A flat, static-feeling control is one of the clearest "unfinished template" tells on a real device.
+- A sticky or fixed header must be fully opaque, with a solid background matching the page and a bottom border or shadow once scrolled. A translucent header lets the page scroll through it and turns the nav into unreadable mush. If you want the blur effect, the background still needs to be opaque enough that nothing shows through.
+- Give a sticky header a real height and make the page account for it, so an anchor jump or a page load never parks a heading underneath it.
 
 CRAFT (this is what separates a professional page from a template, be concrete, not decorative):
 - Commit to one type scale and reuse it. Something like: h1 clamp(2rem,5vw,3.25rem), h2 clamp(1.4rem,3vw,2rem), h3 1.15rem, body 1.0625rem, small 0.875rem. Never size text ad hoc per section.
@@ -78,6 +85,17 @@ INTERACTIVITY (vanilla JS only, no libraries, no CDN scripts, everything inline 
 - Forms get real validation, but with HTML and CSS only: required, type="email", inputmode, minlength, pattern, plus a visible invalid state styled with :user-invalid (fall back to :invalid). Never add a submit, onsubmit, or click handler to a form or its button, and never call preventDefault or stopPropagation on a submit event. Lypo listens for the submit event to capture the response; a handler of your own stops the visitor's signup from ever being recorded.
 - If the site has a street address, embed a live map: <iframe src="https://www.google.com/maps?q=<url-encoded address>&output=embed"> at a reasonable height, in addition to the tap-to-call link and text address, not instead of them.
 - Add schema.org structured data in a <script type="application/ld+json"> tag matching the site (LocalBusiness for restaurant/barbershop/business/foodtruck, Event for event/dated fundraisers), using only real fields the user gave. Omit fields you don't have data for; never guess a value to fill one in.
+
+FINISH (the difference between a page that works and one someone is proud to send to a customer):
+- Someone should not be able to tell this was generated. That is the bar. Not "clean template", but a page that looks like a designer was paid for it.
+- Space is the main tool. Sections breathe: roughly 96px of vertical padding between major sections on desktop, 56px on a phone. Cramped pages are the most common tell. When in doubt add space rather than another element.
+- Anchor the page with one confident opening: a large photo, or a strong typographic statement, or a solid block of the accent color, with the name and the one action clear. Do not open with three small cards.
+- Restraint reads as expensive. Borders 1px and low-contrast. Corner radius consistent everywhere, one value. Shadows either absent or barely visible. Nothing should look like it has a drop shadow from 2012.
+- Type does the work: a real display face for headings paired with a clean face for body copy, a genuine size jump between them, and headings that are allowed to be large. Serif display over a sans body is a reliably good pairing that most generated pages never reach for.
+- Small typographic details lift a page more than any effect: a short uppercase eyebrow label in letter-spaced small caps above a section heading, a rule that stops short instead of spanning the full width, numbers in a lighter weight beside their labels.
+- Alignment is deliberate. Pick left-aligned or centered per section and hold it. Do not centre a heading over left-aligned body text.
+- Every section earns its place. Four strong sections beat nine thin ones. If a section would only carry one sentence, fold it into a neighbour.
+- Check it as a phone would render it: full-width tap targets, no two-column grid squeezed onto a 360px screen, headings that do not run to five lines.
 
 DESIGN APPROACH:
 You have wide latitude. A barbershop, a memorial, and a food truck should not look alike.
@@ -342,7 +360,14 @@ export async function POST(request: Request) {
     if (laidOut.removed > 0) {
       console.warn(`removed a page-clamping width from :root on ${pageName}`);
     }
-    const html = laidOut.html;
+    // "[add price]" reaching a real customer reads as an abandoned site.
+    const filled = stripPlaceholders(laidOut.html);
+    if (filled.removed.length > 0) {
+      console.warn(
+        `removed placeholder text from ${pageName}: ${filled.removed.join(", ")}`,
+      );
+    }
+    const html = filled.html;
 
   const turns = [
     { role: "user", content: message, page: pageName },

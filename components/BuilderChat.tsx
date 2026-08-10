@@ -507,6 +507,7 @@ export function BuilderChat({
     | "review"
     | "describe"
     | "photos"
+    | "clarify"
     | "build";
   const [step, setStep] = useState<Step>(
     initialHtml ? "build" : ((draft?.step as Step) ?? "setup"),
@@ -514,6 +515,12 @@ export function BuilderChat({
   const [siteType, setSiteType] = useState<string | null>(
     draft?.siteType ?? null,
   );
+  // Gaps in the brief, asked about before building rather than guessed at.
+  const [gaps, setGaps] = useState<
+    { id: string; question: string; why: string }[]
+  >([]);
+  const [gapAnswers, setGapAnswers] = useState<Record<string, string>>({});
+  const [checkingGaps, setCheckingGaps] = useState(false);
   const [projectName, setProjectName] = useState(
     draft?.projectName ?? (initialName === "untitled" ? "" : initialName),
   );
@@ -1273,7 +1280,72 @@ document.addEventListener("click", function (e) {
 
   // Purposes that ship as a real multi-page site instead of one scroll.
 
+  /**
+   * Looks for missing facts before building, and asks about them.
+   *
+   * Without this the generator has to do something when a fact is absent,
+   * and what it did was write "[add price]" onto a live services page. The
+   * owner is the only one who knows the answer, so this is the one moment
+   * worth interrupting: after it starts building, asking is too late.
+   */
   async function startBuild() {
+    if (!STYLES.find((s) => s.id === vibe)) return;
+    setStep("clarify");
+    setCheckingGaps(true);
+    try {
+      const res = await fetch("/api/clarify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          description,
+          purpose: siteType,
+          pages: extraPages.map(toPageName).filter(Boolean),
+        }),
+      });
+      const data = await res.json();
+      const questions = Array.isArray(data.questions) ? data.questions : [];
+      if (questions.length === 0) {
+        await runBuild("");
+        return;
+      }
+      setGaps(questions);
+    } catch {
+      // A build with no questions beats no build at all.
+      await runBuild("");
+    } finally {
+      setCheckingGaps(false);
+    }
+  }
+
+  /** Folds the answers into the brief, then builds. */
+  async function buildWithAnswers() {
+    const extra = gaps
+      .map((g) => {
+        const a = (gapAnswers[g.id] ?? "").trim();
+        return a ? `${g.question} ${a}` : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    // Anything they left blank is a fact nobody has, so say so explicitly.
+    // Otherwise the generator treats the silence as an oversight and invents
+    // a placeholder, which is the whole thing this screen exists to stop.
+    const unanswered = gaps
+      .filter((g) => !(gapAnswers[g.id] ?? "").trim())
+      .map((g) => g.question);
+
+    const note = [
+      extra && `Additional details from the owner:\n${extra}`,
+      unanswered.length > 0 &&
+        `The owner was asked the following and did not answer, which means there is no answer to show. Leave these out of the site completely. Do NOT write a placeholder, a bracketed note, "TBD", or any other stand-in text for them:\n${unanswered.map((q) => `- ${q}`).join("\n")}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    await runBuild(note ? `\n\n${note}` : "");
+  }
+
+  async function runBuild(extraContext: string) {
     const style = STYLES.find((s) => s.id === vibe);
     if (!style) return;
     setStep("build");
@@ -1316,7 +1388,7 @@ document.addEventListener("click", function (e) {
 
     try {
       const homeHtml = await generate(
-        `${kindNote} ${typeHint ? `Build ${typeHint}. ` : ""}${description.trim()} ${style.prompt}${photoNote}`,
+        `${kindNote} ${typeHint ? `Build ${typeHint}. ` : ""}${description.trim()}${extraContext} ${style.prompt}${photoNote}`,
         undefined,
         "home",
         true,
@@ -1342,7 +1414,7 @@ document.addEventListener("click", function (e) {
         Array.from({ length: Math.min(LANES, queue.length) }, async () => {
           for (let page = queue.shift(); page; page = queue.shift()) {
           const built = await generate(
-            `Create the "${page}" page for this site. Match the home page's style, fonts, colors, header, and nav exactly.${
+            `Create the "${page}" page for this site. Match the home page's style, fonts, colors, header, and nav exactly.${extraContext}${
               page === "menu"
                 ? " Lay out the full menu using the items and prices the owner gave, grouped into clear sections with real headings. Prices right-aligned or clearly separated from item names. No invented items, no invented prices. If they did not give a price for something, leave the price off rather than guessing."
                 : ""
@@ -2552,6 +2624,88 @@ document.addEventListener("click", function (e) {
             ? `Building ${1 + extraPages.length} pages. They all appear together when the whole site is finished.`
             : "Building your home page."}
         </p>
+      </div>
+    );
+  }
+
+  // ---------- clarify: fill the gaps before building ----------
+  if (step === "clarify") {
+    const answered = gaps.filter((g) => (gapAnswers[g.id] ?? "").trim()).length;
+    return (
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col overflow-y-auto p-5 sm:p-8">
+        {checkingGaps ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-flame" />
+            <p className="text-sm text-ink-soft">
+              reading through what you wrote…
+            </p>
+          </div>
+        ) : (
+          <>
+            <h2 className="font-display mt-2 text-3xl font-semibold tracking-tight">
+              {gaps.length === 1 ? "one quick thing" : "a few quick things"}
+              <span className="text-flame">.</span>
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+              These are the only things I could not work out from what you
+              wrote. Answer what you can. Anything you skip gets left off the
+              site rather than guessed at.
+            </p>
+
+            <div className="mt-7 flex flex-col gap-5">
+              {gaps.map((g) => (
+                <div key={g.id}>
+                  <label
+                    htmlFor={`gap-${g.id}`}
+                    className="block text-sm font-medium"
+                  >
+                    {g.question}
+                  </label>
+                  {g.why && (
+                    <p className="mt-0.5 text-xs text-faint">{g.why}</p>
+                  )}
+                  <input
+                    id={`gap-${g.id}`}
+                    value={gapAnswers[g.id] ?? ""}
+                    onChange={(e) =>
+                      setGapAnswers((prev) => ({
+                        ...prev,
+                        [g.id]: e.target.value,
+                      }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void buildWithAnswers();
+                    }}
+                    placeholder="your answer, or leave blank"
+                    className="mt-2 w-full rounded-xl border border-line bg-paper px-4 py-2.5 text-sm outline-none focus:border-flame"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void buildWithAnswers()}
+                className="rounded-full bg-flame px-8 py-3 font-display font-semibold text-paper transition hover:bg-flame-bright"
+              >
+                build it →
+              </button>
+              <span className="text-xs text-faint">
+                {answered === 0
+                  ? "or build without answering"
+                  : `${answered} of ${gaps.length} answered`}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStep("review")}
+              className="mt-6 self-start text-sm text-faint transition hover:text-flame"
+            >
+              ← back
+            </button>
+          </>
+        )}
       </div>
     );
   }

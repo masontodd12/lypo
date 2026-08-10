@@ -274,3 +274,56 @@ export function stripRootLayout(html: string): {
   );
   return { html: cleaned, removed };
 }
+
+/**
+ * Removes placeholder text the generator should never have written.
+ *
+ * A live services page shipped "[add price]" beside three services. To a
+ * customer that reads as an unfinished site, which is worse than the price
+ * simply not being shown. The prompt forbids these and the clarify step asks
+ * for the missing fact up front, but neither is a guarantee, and this is
+ * cheap and certain.
+ *
+ * Only bracketed or braced text whose contents look like an instruction to
+ * the site owner is removed. Real writing in brackets, "(901) 726-4408",
+ * "[sic]", a price in parentheses, all survive.
+ */
+const PLACEHOLDER_WORDS =
+  "add|insert|enter|your|our|tbd|tba|todo|to do|coming soon|placeholder|fill in|update this|change this|optional|xx+|lorem";
+
+export function stripPlaceholders(html: string): {
+  html: string;
+  removed: string[];
+} {
+  const removed: string[] = [];
+
+  const cleaned = html
+    // [add price], {{ your address }}, [INSERT HOURS]
+    .replace(
+      new RegExp(
+        `[\\[{]{1,2}\\s*(?:${PLACEHOLDER_WORDS})\\b[^\\]}<>]{0,60}[\\]}]{1,2}`,
+        "gi",
+      ),
+      (m) => {
+        removed.push(m.trim());
+        return "";
+      },
+    )
+    // Lorem ipsum, wherever it appears.
+    .replace(/\blorem ipsum[^<]{0,200}/gi, () => {
+      removed.push("lorem ipsum");
+      return "";
+    })
+    // A stand-in price with no brackets: $XX, $XX.XX, $--, $0.00.
+    .replace(/\$\s*(?:x+(?:\.x+)?|-{2,}|\u2014+|0\.00)(?![\w.])/gi, (m) => {
+      removed.push(m.trim());
+      return "";
+    })
+    // TBD, TBA or ??? standing alone as an element's whole contents.
+    .replace(/(>)\s*(?:tbd|tba|\?{2,})\s*(<)/gi, (m, a: string, b: string) => {
+      removed.push(m.slice(1, -1).trim());
+      return `${a}${b}`;
+    });
+
+  return { html: cleaned, removed };
+}
