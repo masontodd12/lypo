@@ -169,3 +169,72 @@ export function stripDangerousHrefs(html: string): {
   );
   return { html: cleaned, removed };
 }
+
+/** Hosts nobody can claim as their own site. */
+const NEVER_ALLOWED = [
+  "lypo.dev",
+  "vercel.app",
+  "vercel.com",
+  "vercel-dns.com",
+  "supabase.co",
+  "localhost",
+];
+
+export type DomainCheck =
+  | { ok: true; domain: string; isApex: boolean }
+  | { ok: false; reason: string };
+
+/**
+ * Checks a domain an owner wants to point at their site.
+ *
+ * Stricter than checkExternalLink: this is not a link to somewhere else, it
+ * is an address we will be asked to serve and issue a certificate for, so a
+ * path or a port is a sign they pasted the wrong thing.
+ */
+export function checkCustomDomain(raw: string): DomainCheck {
+  let value = (raw ?? "").trim().toLowerCase();
+  if (!value) return { ok: false, reason: "Nothing entered." };
+
+  if (DANGEROUS_SCHEME.test(value)) {
+    return { ok: false, reason: "That is not a domain." };
+  }
+
+  // People paste the whole address out of the address bar.
+  value = value.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+
+  if (value.includes("@")) {
+    return { ok: false, reason: "That looks like an email address." };
+  }
+  if (value.includes(":")) {
+    return { ok: false, reason: "Leave the port off, just the domain." };
+  }
+  if (!value.includes(".")) {
+    return { ok: false, reason: "That is missing a domain ending, like .com" };
+  }
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) {
+    return { ok: false, reason: "That is an IP address, not a domain." };
+  }
+  if (value.startsWith("xn--") || value.includes(".xn--")) {
+    return {
+      ok: false,
+      reason: "That domain uses lookalike characters. Type it by hand to be sure.",
+    };
+  }
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(value)) {
+    return { ok: false, reason: "That does not look like a domain." };
+  }
+  if (value.length > 253) {
+    return { ok: false, reason: "That domain is too long." };
+  }
+  if (NEVER_ALLOWED.some((h) => value === h || value.endsWith(`.${h}`))) {
+    return {
+      ok: false,
+      reason: "That address belongs to Lypo. Use a domain you own.",
+    };
+  }
+
+  // Two labels means an apex like example.com, which needs an A record.
+  // More means a subdomain like shop.example.com, which needs a CNAME.
+  const isApex = value.split(".").length === 2;
+  return { ok: true, domain: value, isApex };
+}

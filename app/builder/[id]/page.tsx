@@ -113,6 +113,7 @@ export default async function Builder({
         initialPaymentsEnabled={project.payments_enabled ?? false}
         stripeConnected={stripeConnected}
         initialDraft={draftRow?.onboarding_draft ?? null}
+        initialStatus={project.status}
       />
     </main>
   );

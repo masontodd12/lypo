@@ -170,6 +170,16 @@ $$;
 
 grant execute on function save_project_page(uuid, text, text, jsonb) to authenticated;
 
+-- ---------- bring your own domain ----------
+-- Read by the published-site renderer but never created, so custom domains
+-- silently 404'd. The unique index matters as much as the column: two sites
+-- claiming one domain has no sensible resolution, and the renderer fetches
+-- with maybeSingle().
+alter table projects add column if not exists custom_domain text;
+
+create unique index if not exists projects_custom_domain_key
+  on projects (custom_domain) where custom_domain is not null;
+
 -- ---------- admin: featured sites ----------
 -- The gallery is hand-written mockups. This lets a real published site be
 -- shown there instead, which is far more convincing than an illustration.

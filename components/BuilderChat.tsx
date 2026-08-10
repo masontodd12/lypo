@@ -6,6 +6,7 @@ import { INTERVIEWS, INTERVIEW, type Question } from "@/lib/interviews";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { checkExternalLink } from "@/lib/links";
 import { PAYMENTS_ENABLED } from "@/lib/features";
+import { CustomDomain } from "@/components/CustomDomain";
 
 /**
  * A turn in the conversation, belonging to one page.
@@ -465,6 +466,7 @@ export function BuilderChat({
   initialPaymentsEnabled,
   stripeConnected,
   initialDraft,
+  initialStatus,
 }: {
   initialPages: Record<string, string> | null;
   initialMultiPage: boolean;
@@ -480,6 +482,8 @@ export function BuilderChat({
   stripeConnected: boolean;
   /** Saved onboarding answers, so a half-finished interview survives. */
   initialDraft: OnboardingDraft | null;
+  /** Publish state, since a domain can only point at a published site. */
+  initialStatus: string;
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [html, setHtml] = useState(initialHtml ?? "");
@@ -3164,6 +3168,11 @@ document.addEventListener("click", function (e) {
                   title="appearance"
                   body="Light or dark. This changes Lypo itself, not the site you are building."
                   control={<ThemeToggle />}
+                />
+
+                <CustomDomain
+                  projectId={projectId}
+                  published={initialStatus === "published"}
                 />
 
                 {/* The header link is hidden on phones, so keep a way in. */}
