@@ -25,10 +25,17 @@ export const CUSTOM_DOMAINS_ENABLED = !!TOKEN;
  * everyone somewhere wrong. Read yours once from the Vercel dashboard by
  * starting to add any domain, then set these.
  */
+// || rather than ??, because a variable created in the dashboard with no
+// value is an empty string, not undefined. ?? let that through and showed a
+// customer a blank record to copy, which is worse than showing the default.
+const apexA = process.env.VERCEL_DNS_A?.trim() || "";
+const cname = process.env.VERCEL_DNS_CNAME?.trim() || "";
+
 export const DNS_RECORDS = {
-  apexARecord: process.env.VERCEL_DNS_A ?? "76.76.21.21",
-  cnameTarget: process.env.VERCEL_DNS_CNAME ?? "cname.vercel-dns.com",
-  configured: !!process.env.VERCEL_DNS_A && !!process.env.VERCEL_DNS_CNAME,
+  apexARecord: apexA || "76.76.21.21",
+  cnameTarget: cname || "cname.vercel-dns.com",
+  /** Both set to something real, so the values shown are this project's. */
+  configured: !!apexA && !!cname,
 };
 
 function qs() {
