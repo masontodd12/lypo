@@ -5,7 +5,7 @@ import { checkCustomDomain } from "@/lib/links";
 
 type Verification = { type: string; domain: string; value: string };
 
-type Offer = { domain: string; available: boolean; price: number | null };
+type Offer = { domain: string; available: boolean | null; price: number | null };
 
 type State = {
   domain: string | null;
@@ -78,7 +78,9 @@ function Result({
       <div className="min-w-0">
         <p className="truncate font-mono text-sm">{offer.domain}</p>
         <p className="mt-0.5 text-xs text-faint">
-          {offer.available ? (
+          {offer.available === null ? (
+            "we could not check this one"
+          ) : offer.available ? (
             <>
               free to register
               {offer.price !== null && (
@@ -96,7 +98,10 @@ function Result({
           )}
         </p>
       </div>
-      {offer.available && (
+      {/* Shown unless we know it is taken. An unchecked name still needs
+          somewhere to go: the registrar will say whether it is free, and
+          that is the trip they were making anyway. */}
+      {offer.available !== false && (
         <div className="flex shrink-0 items-center gap-2 text-xs">
           {shops.map(([name, url]) => (
             <a
@@ -252,6 +257,9 @@ export function CustomDomain({
       }
       setOffer(data.offer);
       setAlternatives(data.alternatives ?? []);
+      // Not an error: the name still gets shown with buy links. It only
+      // explains why there is no yes-or-no beside it.
+      setSearchError(data.unchecked ? (data.reason ?? "") : "");
     } catch {
       setSearchError("Couldn't reach the server.");
     } finally {
@@ -453,7 +461,7 @@ export function CustomDomain({
                   {offer && (
                     <div className="mt-3 space-y-2">
                       <Result offer={offer} onPick={remember} />
-                      {!offer.available && alternatives.length > 0 && (
+                      {offer.available === false && alternatives.length > 0 && (
                         <>
                           <p className="pt-1 text-xs text-ink-soft">
                             These are free:
@@ -467,7 +475,7 @@ export function CustomDomain({
                           ))}
                         </>
                       )}
-                      {!offer.available && alternatives.length === 0 && (
+                      {offer.available === false && alternatives.length === 0 && (
                         <p className="text-xs text-ink-soft">
                           Nothing close was free. Try adding your town, or the
                           kind of work you do.

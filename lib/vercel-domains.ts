@@ -157,10 +157,15 @@ export async function removeDomain(domain: string): Promise<boolean> {
 
 export type DomainOffer = {
   domain: string;
-  available: boolean;
+  /** null when the lookup itself failed, which is not the same as "taken". */
+  available: boolean | null;
   /** Yearly price in whole currency units, when Vercel will quote one. */
   price: number | null;
 };
+
+export type OfferResult =
+  | { ok: true; offer: DomainOffer }
+  | { ok: false; status: number; message: string };
 
 /**
  * Whether a domain can still be registered, and roughly what it costs.
@@ -169,31 +174,45 @@ export type DomainOffer = {
  * to go and buy. Lypo does not sell domains and takes no money, so this is a
  * lookup and nothing more.
  *
+ * Reports why it failed rather than returning nothing. These endpoints are
+ * account-level, so a project-scoped token gets a 403 that looks identical
+ * to a rate limit if the reason is thrown away, and neither is guessable
+ * from "could not check that one".
+ *
  * Price is best-effort: Vercel does not quote every extension, and the ones
- * it does quote run higher than most registrars. Treat a null as "we could
- * not find out" rather than "free".
+ * it does quote run higher than most registrars. A null means "we could not
+ * find out", never "free".
  */
-export async function domainOffer(domain: string): Promise<DomainOffer | null> {
+export async function domainOffer(domain: string): Promise<OfferResult> {
+  const team = TEAM ? `&teamId=${encodeURIComponent(TEAM)}` : "";
   const status = await call(
-    `/v4/domains/status?name=${encodeURIComponent(domain)}${TEAM ? `&teamId=${encodeURIComponent(TEAM)}` : ""}`,
+    `/v4/domains/status?name=${encodeURIComponent(domain)}${team}`,
   );
-  if (!status.ok) return null;
+  if (!status.ok) {
+    const message = messageFrom(status.body, "Vercel would not answer.");
+    console.error(
+      `domain status lookup failed for ${domain}: ${status.status} ${message}`,
+    );
+    return { ok: false, status: status.status, message };
+  }
 
   const available = status.body.available === true;
-  if (!available) return { domain, available: false, price: null };
+  if (!available) {
+    return { ok: true, offer: { domain, available: false, price: null } };
+  }
 
   // Asked for separately, and allowed to fail on its own: knowing a name is
   // free is the useful half, and losing it because a price lookup 404'd
   // would be a poor trade.
   const priced = await call(
-    `/v4/domains/price?name=${encodeURIComponent(domain)}${TEAM ? `&teamId=${encodeURIComponent(TEAM)}` : ""}`,
+    `/v4/domains/price?name=${encodeURIComponent(domain)}${team}`,
   );
   const price =
     priced.ok && typeof priced.body.price === "number"
       ? priced.body.price
       : null;
 
-  return { domain, available: true, price };
+  return { ok: true, offer: { domain, available: true, price } };
 }
 
 /**

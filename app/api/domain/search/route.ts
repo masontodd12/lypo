@@ -43,26 +43,36 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: check.reason }, { status: 400 });
   }
 
-  const offer = await domainOffer(check.domain);
-  if (!offer) {
-    return NextResponse.json(
-      { error: "Couldn't check that one. Try again in a moment." },
-      { status: 502 },
-    );
+  const result = await domainOffer(check.domain);
+
+  // A failed lookup must not kill the feature. Knowing whether a name is
+  // free is the nice half; the useful half is sending someone somewhere they
+  // can buy it, and that works whether or not Vercel answered. So the domain
+  // still comes back, marked unchecked, with somewhere to go.
+  if (!result.ok) {
+    return NextResponse.json({
+      offer: { domain: check.domain, available: null, price: null },
+      alternatives: [],
+      unchecked: true,
+      reason:
+        result.status === 403
+          ? "Availability checking is not enabled for this Vercel token."
+          : result.message,
+    });
   }
+
+  const offer = result.offer;
 
   // Alternatives are only worth fetching when the first choice is gone.
   // Checked together rather than in turn, because six lookups one after
   // another is most of a second of someone watching a spinner.
-  const alternatives = offer.available
-    ? []
-    : (
-        await Promise.all(
-          alternativesFor(check.domain).map((d) => domainOffer(d)),
-        )
-      )
-        .filter((o): o is NonNullable<typeof o> => !!o && o.available)
-        .slice(0, 4);
+  const alternatives =
+    offer.available === false
+      ? (await Promise.all(alternativesFor(check.domain).map(domainOffer)))
+          .filter((r) => r.ok && r.offer.available === true)
+          .map((r) => (r as { ok: true; offer: typeof offer }).offer)
+          .slice(0, 4)
+      : [];
 
   return NextResponse.json({ offer, alternatives });
 }
