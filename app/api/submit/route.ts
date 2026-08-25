@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
+import { RESEND_FROM } from "@/lib/email";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
             authorization: `Bearer ${process.env.RESEND_API_KEY}`,
           },
           body: JSON.stringify({
-            from: "Lypo <notifications@resend.dev>",
+            from: RESEND_FROM,
             to: owner.owner_email,
             subject: `New response on ${owner.name}`,
             html: `<div style="font-family:sans-serif;"><h2>Someone responded on ${escapeHtml(owner.name)}</h2><table>${rows}</table><p style="color:#6f6459;font-size:13px;">View all responses in your Lypo dashboard.</p></div>`,

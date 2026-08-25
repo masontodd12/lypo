@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { siteUrlFor, appOrigin } from "@/lib/site-url";
+import { RESEND_FROM } from "@/lib/email";
 
 // Weekly stats email: "your site got 240 views, 12 responses this week."
 // Triggered by Vercel cron (see vercel.json). Guarded by CRON_SECRET.
@@ -87,7 +88,7 @@ export async function GET(request: Request) {
         authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: "Lypo <notifications@resend.dev>",
+        from: RESEND_FROM,
         to: email,
         subject: `your week: ${totalViews} views, ${totalSubs} responses`,
         html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#221C17;">

@@ -85,6 +85,9 @@ export default async function AdminHealth() {
     adminEmails: !!process.env.LYPO_ADMIN_EMAILS,
     serviceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
     resend: !!process.env.RESEND_API_KEY,
+    // A key on its own is not enough: the shared test domain silently
+    // drops everything addressed outside the Resend account.
+    resendFrom: !!process.env.RESEND_FROM,
   };
 
   return (
@@ -188,6 +191,7 @@ export default async function AdminHealth() {
             "OPENAI_FALLBACK_MODEL (optional)",
           ],
           ["email sending", envSet.resend, "RESEND_API_KEY"],
+          ["email from address", envSet.resendFrom, "RESEND_FROM"],
         ].map(([label, set, key]) => (
           <div
             key={key as string}

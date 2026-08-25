@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/ratelimit";
 import { siteUrlFor, appOrigin } from "@/lib/site-url";
+import { RESEND_FROM } from "@/lib/email";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MAX_RECIPIENTS = 200;
@@ -105,7 +106,7 @@ export async function POST(request: Request) {
         authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       },
       body: JSON.stringify({
-        from: "Lypo <notifications@resend.dev>",
+        from: RESEND_FROM,
         to,
         ...(project.owner_email ? { reply_to: project.owner_email } : {}),
         subject: String(subject).trim(),
