@@ -57,6 +57,19 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // ---- A failed sign-in link ----
+  // Supabase reports these against its own Site URL, so an expired link
+  // lands on the marketing homepage carrying ?error_code=otp_expired, where
+  // nothing reads it. The visitor sees an ordinary page, concludes the email
+  // never arrived, and asks for another link that fails the same way.
+  // Carried to the sign-in page instead, which knows how to explain it.
+  const failedLink = request.nextUrl.searchParams.get("error_code");
+  if (failedLink && !request.nextUrl.pathname.startsWith("/login")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

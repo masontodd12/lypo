@@ -64,6 +64,26 @@ export function checkSlug(raw: string): SlugCheck {
   return { ok: true, slug };
 }
 
+/**
+ * Makes a "?next=" destination safe to redirect to.
+ *
+ * The value arrives from the query string, so it is attacker-controlled. Fed
+ * straight to new URL(next, origin) an absolute URL wins over the base and
+ * "?next=https://evil.com" becomes a redirect off the site, carried out by us
+ * immediately after someone signs in, which is exactly when they are least
+ * likely to notice the address changed.
+ *
+ * Only a plain in-app path is allowed. Anything else falls back.
+ */
+export function safeNext(raw: string | null | undefined, fallback = "/dashboard"): string {
+  const value = (raw ?? "").trim();
+  // Must start with a single slash: "//evil.com" is protocol-relative and
+  // would leave the site just as surely as a full URL.
+  if (!value.startsWith("/") || value.startsWith("//")) return fallback;
+  if (value.includes("\\")) return fallback;
+  return value;
+}
+
 /** Bare app host, e.g. "lypo.dev" or "localhost:3000". */
 export function appHost(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL ?? "https://lypo.dev")
