@@ -274,3 +274,22 @@ end;
 $$;
 
 grant execute on function increment_site_event(uuid, text) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- The design choice made during onboarding: which template, which color(s).
+--
+-- Stored on the project so that every later edit rebuilds the same design
+-- brief. Without it, asking to change a phone number six weeks later would
+-- regenerate the page against a default palette.
+-- ---------------------------------------------------------------------------
+alter table projects add column if not exists design jsonb;
+
+-- ---------------------------------------------------------------------------
+-- Whether this site may connect a domain of its own.
+--
+-- Off by default and granted per site from the admin board. Every custom
+-- domain is a real domain registered against the Vercel project, so how many
+-- exist is worth deciding rather than letting it happen.
+-- ---------------------------------------------------------------------------
+alter table projects
+  add column if not exists custom_domain_allowed boolean not null default false;

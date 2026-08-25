@@ -7,6 +7,15 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { checkExternalLink } from "@/lib/links";
 import { PAYMENTS_ENABLED } from "@/lib/features";
 import { CustomDomain } from "@/components/CustomDomain";
+import TemplatePreview from "@/components/TemplatePreview";
+import {
+  ACCENTS,
+  parseHex,
+  TEMPLATES,
+  templateById,
+  templatesFor,
+  type DesignChoice,
+} from "@/lib/design";
 
 /**
  * A turn in the conversation, belonging to one page.
@@ -27,7 +36,10 @@ type Message = {
 type OnboardingDraft = {
   step?: string;
   siteType?: string | null;
-  vibe?: string | null;
+  template?: string | null;
+  accent?: string | null;
+  second?: string | null;
+  dark?: boolean;
   kind?: string;
   projectName?: string;
   qIndex?: number;
@@ -225,17 +237,6 @@ function SettingRow({
   );
 }
 
-const STYLES = [
-  { id: "minimal", label: "minimal", blurb: "clean, airy, lots of white space", colors: ["#FFFFFF", "#F2F2F0", "#1A1A1A"], font: "font-sans", prompt: "Style: ultra-minimal. Generous white space, warm off-white background, one restrained accent used fewer than three times, elegant typography, no decoration." },
-  { id: "bold", label: "bold", blurb: "big type, one strong color, loud energy", colors: ["#FF3B30", "#FFF8F0", "#111111"], font: "font-sans font-extrabold", prompt: "Style: bold and confident. Heavy display type (Archivo Black or Anton), large scale, high contrast, ONE saturated accent color used on large surfaces. Solid colors only, no gradients, no second accent." },
-  { id: "warm", label: "warm", blurb: "cozy, earthy, soft and inviting", colors: ["#FFF4E6", "#D9A066", "#5A3E28"], font: "font-serif", prompt: "Style: warm and inviting. Soft earthy palette, rounded corners, friendly humanist type, cozy community feel. One accent only." },
-  { id: "elegant", label: "elegant", blurb: "refined, serif, quiet luxury", colors: ["#F7F5F1", "#C9B896", "#22201C"], font: "font-serif italic", prompt: "Style: elegant and refined. Sophisticated serif display type (Fraunces or Instrument Serif), muted palette of cream and charcoal with one quiet accent, generous line-height, lots of restraint." },
-  { id: "playful", label: "playful", blurb: "rounded, fun, full of personality", colors: ["#FDFCFA", "#FF8552", "#22201C"], font: "font-sans", prompt: "Style: playful and fun. Rounded shapes, bouncy friendly feel, varied type sizes, one bright accent color. Solid colors only, no gradients, no neon." },
-  { id: "dark", label: "dark", blurb: "moody, warm dark, high contrast", colors: ["#14110F", "#28221E", "#E8A87C"], font: "font-mono", prompt: "Style: dark and moody. Warm near-black background (#14110F, never navy or purple-black), high contrast text, one warm accent. No glow effects, no neon, no gradients." },
-  { id: "retro", label: "retro", blurb: "vintage colors, nostalgic charm", colors: ["#F4E1C6", "#E76F51", "#2A9D8F"], font: "font-serif", prompt: "Style: retro vintage. 70s-inspired cream background, chunky type, nostalgic charm, burnt orange OR teal as the single accent, not both." },
-  { id: "editorial", label: "editorial", blurb: "magazine layout, strong typography", colors: ["#FFFFFF", "#111111", "#D62828"], font: "font-serif font-bold", prompt: "Style: editorial magazine. Strong typographic hierarchy with a serif display face, grid-based layout, black and white with one red accent, feels like a beautiful publication." },
-  { id: "organic", label: "organic", blurb: "natural greens, calm and grounded", colors: ["#F1F5EC", "#7CA982", "#2F3E2F"], font: "font-sans", prompt: "Style: organic and natural. Soft warm neutrals with muted green as the single accent, gentle curves, calm grounded feeling." },
-];
 
 
 
@@ -467,6 +468,7 @@ export function BuilderChat({
   stripeConnected,
   initialDraft,
   initialStatus,
+  customDomainAllowed = false,
 }: {
   initialPages: Record<string, string> | null;
   initialMultiPage: boolean;
@@ -484,6 +486,8 @@ export function BuilderChat({
   initialDraft: OnboardingDraft | null;
   /** Publish state, since a domain can only point at a published site. */
   initialStatus: string;
+  /** Granted per site from the admin board. */
+  customDomainAllowed?: boolean;
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [html, setHtml] = useState(initialHtml ?? "");
@@ -501,7 +505,8 @@ export function BuilderChat({
   type Step =
     | "setup"
     | "type"
-    | "vibe"
+    | "template"
+    | "color"
     | "how"
     | "paste"
     | "review"
@@ -509,8 +514,31 @@ export function BuilderChat({
     | "photos"
     | "clarify"
     | "build";
+  // A draft saved before the look picker was split into template and color
+  // names a step that no longer exists. Resuming one should land on the new
+  // picker rather than a blank screen.
+  const STEPS: Step[] = [
+    "setup",
+    "type",
+    "template",
+    "color",
+    "how",
+    "paste",
+    "review",
+    "describe",
+    "photos",
+    "clarify",
+    "build",
+  ];
+  const savedStep = draft?.step as Step | undefined;
   const [step, setStep] = useState<Step>(
-    initialHtml ? "build" : ((draft?.step as Step) ?? "setup"),
+    initialHtml
+      ? "build"
+      : savedStep && STEPS.includes(savedStep)
+        ? savedStep
+        : savedStep
+          ? "template"
+          : "setup",
   );
   const [siteType, setSiteType] = useState<string | null>(
     draft?.siteType ?? null,
@@ -527,7 +555,16 @@ export function BuilderChat({
   const [kind, setKind] = useState<string>(
     draft?.kind ?? initialKind ?? "website",
   );
-  const [vibe, setVibe] = useState<string | null>(draft?.vibe ?? null);
+  // The look, in two decisions. The template settles layout and typography;
+  // the color settles the palette, which is derived from it rather than
+  // chosen by the model. See lib/design.ts.
+  const [template, setTemplate] = useState<string | null>(
+    draft?.template ?? null,
+  );
+  const [accent, setAccent] = useState<string | null>(draft?.accent ?? null);
+  const [second, setSecond] = useState<string | null>(draft?.second ?? null);
+  const [darkMode, setDarkMode] = useState<boolean>(draft?.dark ?? false);
+  const [customHex, setCustomHex] = useState("");
   const [description, setDescription] = useState(initialIdea ?? "");
   const [qIndex, setQIndex] = useState(draft?.qIndex ?? 0);
   const [answers, setAnswers] = useState<string[]>(draft?.answers ?? []);
@@ -1170,6 +1207,24 @@ document.addEventListener("click", function (e) {
     setUploading(false);
   }
 
+  /**
+   * The design this session has chosen, or nothing.
+   *
+   * Nothing is the right answer when a built site is reopened: onboarding
+   * state is empty then, and the server has the real choice stored. Sending
+   * a half-filled default here would overwrite it on the next small edit.
+   */
+  function currentDesign(): DesignChoice | undefined {
+    const chosen = templateById(template);
+    if (!chosen) return undefined;
+    return {
+      template: chosen.id,
+      accent: accent ?? chosen.defaultAccent,
+      second,
+      dark: darkMode,
+    };
+  }
+
   async function generate(
     message: string,
     imageUrls?: string[],
@@ -1179,6 +1234,12 @@ document.addEventListener("click", function (e) {
      * still being built, so the preview only ever flips once, at the end.
      */
     silent = false,
+    /**
+     * The design to build against. Onboarding and the restyle controls pass
+     * one explicitly; an ordinary edit passes nothing and the server reuses
+     * whatever the project already stored.
+     */
+    designOverride?: DesignChoice,
   ): Promise<string | null> {
     const targetPage = pageOverride ?? currentPage;
     inFlight.current += 1;
@@ -1210,6 +1271,7 @@ document.addEventListener("click", function (e) {
           page: targetPage,
           purpose: siteType ?? undefined,
           logoUrl: logo ?? undefined,
+          design: designOverride ?? currentDesign(),
         }),
       });
       // Newline-delimited JSON: many {t:"delta"} as the page is written,
@@ -1289,7 +1351,7 @@ document.addEventListener("click", function (e) {
    * worth interrupting: after it starts building, asking is too late.
    */
   async function startBuild() {
-    if (!STYLES.find((s) => s.id === vibe)) return;
+    if (!templateById(template)) return;
     setStep("clarify");
     setCheckingGaps(true);
     try {
@@ -1346,8 +1408,8 @@ document.addEventListener("click", function (e) {
   }
 
   async function runBuild(extraContext: string) {
-    const style = STYLES.find((s) => s.id === vibe);
-    if (!style) return;
+    const chosen = templateById(template);
+    if (!chosen) return;
     setStep("build");
     const typeHint = SITE_TYPES.find((t) => t.id === siteType)?.hint;
     const photoNote =
@@ -1387,11 +1449,18 @@ document.addEventListener("click", function (e) {
     setBuildPhase("home");
 
     try {
+      const design: DesignChoice = {
+        template: chosen.id,
+        accent: accent ?? chosen.defaultAccent,
+        second,
+        dark: darkMode,
+      };
       const homeHtml = await generate(
-        `${kindNote} ${typeHint ? `Build ${typeHint}. ` : ""}${description.trim()}${extraContext} ${style.prompt}${photoNote}`,
+        `${kindNote} ${typeHint ? `Build ${typeHint}. ` : ""}${description.trim()}${extraContext}${photoNote}`,
         undefined,
         "home",
         true,
+        design,
       );
 
       // Home failed. generate() already surfaced the error, and there is
@@ -1422,6 +1491,7 @@ document.addEventListener("click", function (e) {
             undefined,
             page,
             true,
+            design,
           );
           setBuildDone((n) => n + 1);
           results.push({ page, ok: !!built });
@@ -1463,10 +1533,39 @@ document.addEventListener("click", function (e) {
     }
   }
 
-  function restyle(styleId: string) {
-    const style = STYLES.find((s) => s.id === styleId);
-    if (!style || busy) return;
-    generate(`Redesign the current page. ${style.prompt} Keep all the content and photos.`);
+  /**
+   * Switches the site to a different template after it is built.
+   *
+   * The new choice is sent as the design, so the server stores it and every
+   * later edit is measured against the same brief. Sending only a sentence
+   * asking for a redesign would leave the stored design pointing at the old
+   * template, and the next small edit would quietly drag the page back.
+   */
+  function restyle(templateId: string) {
+    const next = templateById(templateId);
+    if (!next || busy) return;
+    setTemplate(templateId);
+    generate(
+      `Rebuild this page using the ${next.label} template in the design brief. Keep every fact, every photo and every link exactly as they are; only the layout and typography change.`,
+      undefined,
+      undefined,
+      false,
+      { template: templateId, accent: accent ?? next.defaultAccent, second, dark: darkMode },
+    );
+  }
+
+  /** Recolors the built site without touching its layout. */
+  function recolor(hex: string) {
+    if (busy) return;
+    const chosen = templateById(template) ?? TEMPLATES[0];
+    setAccent(hex);
+    generate(
+      "Apply the palette in the design brief to this page. Change nothing else: same layout, same words, same photos.",
+      undefined,
+      undefined,
+      false,
+      { template: chosen.id, accent: hex, second, dark: darkMode },
+    );
   }
 
   useEffect(() => {
@@ -1592,8 +1691,8 @@ document.addEventListener("click", function (e) {
                     .filter((p) => p.on)
                     .map((p) => p.name),
                 );
-                setStep("vibe");
-                saveDraft({ step: "vibe", siteType: type.id });
+                setStep("template");
+                saveDraft({ step: "template", siteType: type.id });
               }}
               className="rounded-xl border border-line bg-paper p-5 text-left transition hover:border-flame"
             >
@@ -1615,8 +1714,9 @@ document.addEventListener("click", function (e) {
     );
   }
 
-  // ---------- STEP 1: pick a vibe ----------
-  if (step === "vibe") {
+  // ---------- STEP 1a: pick a template to copy ----------
+  if (step === "template") {
+    const options = templatesFor(siteType);
     return (
       <div className="flex flex-1 flex-col items-center overflow-y-auto p-5 sm:p-8">
         <button
@@ -1627,54 +1727,238 @@ document.addEventListener("click", function (e) {
           ← back ({siteType})
         </button>
         <p className="font-display mt-4 text-3xl font-semibold tracking-tight">
-          choose your look<span className="text-flame">.</span>
+          pick a starting point<span className="text-flame">.</span>
         </p>
-        <p className="mt-2 text-sm text-ink-soft">
-          This sets your colors and typography. You can change it at any point
-          after your site is built.
+        <p className="mt-2 max-w-lg text-center text-sm text-ink-soft">
+          Each one is a different layout and set of fonts. Pick whichever
+          style you want your site to copy. You can change it, and the
+          colors, at any point after your site is built.
         </p>
-        <div className="mt-8 grid w-full max-w-4xl gap-4 sm:grid-cols-3">
-          {STYLES.map((style) => (
+
+        {/* Colors live here as well as on the next screen. Seeing all nine
+            templates repaint in your own color is what makes the choice
+            feel like yours rather than like picking from a catalogue. */}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+          <span className="mr-1 text-xs uppercase tracking-wider text-faint">
+            color
+          </span>
+          {ACCENTS.map((c) => (
             <button
-              key={style.id}
+              key={c.id}
+              type="button"
+              title={c.label}
+              onClick={() => {
+                setAccent(c.hex);
+                saveDraft({ accent: c.hex });
+              }}
+              className={`h-7 w-7 rounded-full border-2 transition hover:scale-110 ${
+                accent?.toUpperCase() === c.hex.toUpperCase()
+                  ? "border-flame scale-110"
+                  : "border-transparent"
+              }`}
+              style={{ background: c.hex }}
+            >
+              <span className="sr-only">{c.label}</span>
+            </button>
+          ))}
+          {accent && (
+            <button
               type="button"
               onClick={() => {
-                setVibe(style.id);
-                setStep("how");
-                saveDraft({ step: "how", vibe: style.id });
+                setAccent(null);
+                saveDraft({ accent: null });
               }}
-              className="group rounded-xl border border-line bg-paper p-5 text-left transition hover:border-flame"
+              className="ml-1 text-xs text-faint underline transition hover:text-flame"
             >
-              {/* mini example swatch */}
-              <div
-                className="flex h-20 flex-col justify-between rounded-lg p-3"
-                style={{ background: style.colors[0] }}
-              >
-                <div
-                  className="h-2 w-2/3 rounded-full"
-                  style={{ background: style.colors[2] }}
-                />
-                <div className="flex gap-1.5">
-                  <div
-                    className="h-4 w-12 rounded"
-                    style={{ background: style.colors[1] }}
-                  />
-                  <div
-                    className="h-4 w-8 rounded"
-                    style={{ background: style.colors[2], opacity: 0.7 }}
-                  />
-                </div>
-              </div>
-              <p className="font-display mt-4 font-semibold">
-                {style.label}
+              reset
+            </button>
+          )}
+        </div>
+
+        <div className="mt-7 grid w-full max-w-5xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {options.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                setTemplate(t.id);
+                setStep("color");
+                saveDraft({ step: "color", template: t.id });
+              }}
+              className={`group rounded-xl border p-3 text-left transition hover:border-flame ${
+                template === t.id ? "border-flame" : "border-line"
+              } bg-paper`}
+            >
+              <TemplatePreview
+                template={t}
+                accent={accent}
+                second={second}
+                dark={darkMode}
+              />
+              <p className="font-display mt-3 font-semibold">
+                {t.label}
                 <span className="text-flame">.</span>
               </p>
               <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-                {style.blurb}
+                {t.blurb}
               </p>
             </button>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // ---------- STEP 1b: pick the color ----------
+  if (step === "color") {
+    const chosen = templateById(template) ?? TEMPLATES[0];
+    const live = accent || chosen.defaultAccent;
+    const typed = parseHex(customHex);
+
+    function pick(hex: string) {
+      setAccent(hex);
+      saveDraft({ accent: hex });
+    }
+
+    // Tapping the color that is already the second one clears it, so there
+    // is no separate remove control to find.
+    function pickSecond(hex: string) {
+      const next = second === hex ? null : hex;
+      setSecond(next);
+      saveDraft({ second: next });
+    }
+
+    return (
+      <div className="flex flex-1 flex-col items-center overflow-y-auto p-5 sm:p-8">
+        <button
+          type="button"
+          onClick={() => setStep("template")}
+          className="self-start text-sm text-faint transition hover:text-flame"
+        >
+          ← back ({chosen.label})
+        </button>
+        <p className="font-display mt-4 text-3xl font-semibold tracking-tight">
+          now your colors<span className="text-flame">.</span>
+        </p>
+        <p className="mt-2 max-w-lg text-center text-sm text-ink-soft">
+          Pick one color. Everything else on the site is built around it, and
+          we keep the text readable whatever you choose.
+        </p>
+
+        <div className="mt-8 w-full max-w-md">
+          <TemplatePreview
+            template={chosen}
+            accent={live}
+            second={second}
+            dark={darkMode}
+          />
+        </div>
+
+        <div className="mt-8 w-full max-w-md">
+          <p className="text-xs font-medium uppercase tracking-wider text-faint">
+            your color
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {ACCENTS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                title={c.label}
+                onClick={() => pick(c.hex)}
+                className={`h-10 w-10 rounded-full border-2 transition ${
+                  live.toUpperCase() === c.hex.toUpperCase()
+                    ? "border-flame scale-110"
+                    : "border-transparent hover:scale-110"
+                }`}
+                style={{ background: c.hex }}
+              >
+                <span className="sr-only">{c.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 flex items-center gap-2">
+            <label className="text-xs text-ink-soft" htmlFor="customhex">
+              or a hex code
+            </label>
+            <input
+              id="customhex"
+              value={customHex}
+              onChange={(e) => {
+                setCustomHex(e.target.value);
+                const hex = parseHex(e.target.value);
+                if (hex) pick(hex);
+              }}
+              placeholder="#7A5C3E"
+              className="w-28 rounded-lg border border-line bg-paper px-2 py-1 text-sm outline-none focus:border-flame"
+            />
+            {customHex && !typed && (
+              <span className="text-xs text-faint">
+                needs 3 or 6 hex digits
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-7 w-full max-w-md">
+          <p className="text-xs font-medium uppercase tracking-wider text-faint">
+            a second color <span className="normal-case">(optional)</span>
+          </p>
+          <p className="mt-1 text-xs text-ink-soft">
+            Used only as a background tint behind some sections. Two colors
+            competing for attention is what makes a site look cheap, so this
+            one stays quiet.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {ACCENTS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                title={c.label}
+                onClick={() => pickSecond(c.hex)}
+                className={`h-8 w-8 rounded-full border-2 transition ${
+                  second?.toUpperCase() === c.hex.toUpperCase()
+                    ? "border-flame scale-110"
+                    : "border-transparent hover:scale-110"
+                }`}
+                style={{ background: c.hex }}
+              >
+                <span className="sr-only">{c.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-7 w-full max-w-md">
+          <Switch
+            on={darkMode}
+            onChange={() => {
+              const next = !darkMode;
+              setDarkMode(next);
+              saveDraft({ dark: next });
+            }}
+            label="dark background"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            const hex = live;
+            setAccent(hex);
+            setStep("how");
+            saveDraft({
+              step: "how",
+              template: chosen.id,
+              accent: hex,
+              second,
+              dark: darkMode,
+            });
+          }}
+          className="mt-8 rounded-full bg-flame px-8 py-3 text-sm font-medium text-white transition hover:opacity-90"
+        >
+          use these colors
+        </button>
       </div>
     );
   }
@@ -1802,7 +2086,7 @@ document.addEventListener("click", function (e) {
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center p-5 sm:p-8">
         <button
           type="button"
-          onClick={() => setStep("vibe")}
+          onClick={() => setStep("template")}
           className="self-start text-sm text-faint transition hover:text-flame"
         >
           ← back
@@ -2716,10 +3000,10 @@ document.addEventListener("click", function (e) {
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col overflow-y-auto p-5 sm:p-8">
         <button
           type="button"
-          onClick={() => setStep("vibe")}
+          onClick={() => setStep("template")}
           className="self-start text-sm text-faint transition hover:text-flame"
         >
-          ← change vibe ({vibe})
+          ← change look ({templateById(template)?.label ?? "template"})
         </button>
         <h2 className="font-display mt-6 text-3xl font-semibold tracking-tight">
           tell us everything<span className="text-flame">.</span>
@@ -2897,15 +3181,41 @@ document.addEventListener("click", function (e) {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {STYLES.slice(0, 5).map((style) => (
+          {templatesFor(siteType)
+            .slice(0, 5)
+            .map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => restyle(t.id)}
+                disabled={busy}
+                className={`rounded-full border px-3 py-1 text-xs transition hover:border-flame hover:text-flame disabled:opacity-40 ${
+                  template === t.id
+                    ? "border-flame text-flame"
+                    : "border-line text-ink-soft"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          {/* Recoloring is a different job from restyling, so it gets its
+              own controls rather than being folded into the template chips. */}
+          <span className="mx-1 h-4 w-px bg-line" />
+          {ACCENTS.slice(0, 6).map((c) => (
             <button
-              key={style.id}
+              key={c.id}
               type="button"
-              onClick={() => restyle(style.id)}
+              title={`recolor ${c.label}`}
+              onClick={() => recolor(c.hex)}
               disabled={busy}
-              className="rounded-full border border-line px-3 py-1 text-xs text-ink-soft transition hover:border-flame hover:text-flame disabled:opacity-40"
+              className={`h-6 w-6 rounded-full border-2 transition hover:scale-110 disabled:opacity-40 ${
+                accent?.toUpperCase() === c.hex.toUpperCase()
+                  ? "border-flame"
+                  : "border-transparent"
+              }`}
+              style={{ background: c.hex }}
             >
-              {style.label}
+              <span className="sr-only">recolor {c.label}</span>
             </button>
           ))}
           <label className="cursor-pointer rounded-full border border-line px-3 py-1 text-xs text-ink-soft transition hover:border-flame hover:text-flame">
@@ -3324,10 +3634,15 @@ document.addEventListener("click", function (e) {
                   control={<ThemeToggle />}
                 />
 
-                <CustomDomain
-                  projectId={projectId}
-                  published={initialStatus === "published"}
-                />
+                {/* Only shown where it has been granted. Without this the
+                    owner meets a control that always refuses, which reads
+                    as broken rather than as not-for-you. */}
+                {customDomainAllowed && (
+                  <CustomDomain
+                    projectId={projectId}
+                    published={initialStatus === "published"}
+                  />
+                )}
 
                 {/* The header link is hidden on phones, so keep a way in. */}
                 <a
