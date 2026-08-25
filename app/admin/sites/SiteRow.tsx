@@ -196,30 +196,32 @@ export function SiteRow({ site }: { site: AdminSite }) {
             </button>
           )}
 
-          {/* Who gets to bring their own domain, decided one site at a
-              time. The owner sees no domain controls at all until this
-              is on. */}
+          {/* Bringing your own domain is self-serve, so this is only ever
+              used to take it away from a site that is abusing it. Shown as
+              an off switch rather than a grant, and only called out once it
+              has actually been used. */}
           <button
             type="button"
             disabled={pending}
             onClick={() => {
-              const next = !domainAllowed;
-              const ask =
-                next || !site.customDomain
-                  ? null
-                  : `Turn off custom domains for "${site.name}"? ${site.customDomain} will be disconnected.`;
-              const go = () => {
-                setDomainAllowed(next);
-                run(() => setCustomDomainAllowed(site.id, next), undefined);
-              };
-              if (ask) confirmThen(ask, go);
-              else go();
+              const blocking = domainAllowed;
+              const ask = !blocking
+                ? `Let "${site.name}" connect its own domain again?`
+                : site.customDomain
+                  ? `Block custom domains for "${site.name}"? ${site.customDomain} will be disconnected and the owner will not be able to reconnect it.`
+                  : `Block custom domains for "${site.name}"? The owner will not be able to connect one.`;
+              confirmThen(ask, () => {
+                setDomainAllowed(!blocking);
+                run(() => setCustomDomainAllowed(site.id, !blocking));
+              });
             }}
             className={`font-medium transition disabled:opacity-40 ${
-              domainAllowed ? "text-flame" : "text-ink-soft hover:text-flame"
+              domainAllowed
+                ? "text-ink-soft hover:text-flame"
+                : "text-flame"
             }`}
           >
-            {domainAllowed ? "own domain on" : "allow own domain"}
+            {domainAllowed ? "block domains" : "domains blocked"}
           </button>
 
           {site.status === "published" && (

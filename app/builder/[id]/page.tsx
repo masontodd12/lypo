@@ -50,17 +50,18 @@ export default async function Builder({
 
   // Same reason, separately again: this column arrives with its own
   // migration, and a builder that 404s because of it would be worse than one
-  // that simply shows no domain controls.
-  let customDomainAllowed = false;
+  // that simply shows the domain controls. Anything but an explicit false is
+  // allowed, so an un-migrated database behaves like an open one.
+  let customDomainAllowed = true;
   try {
     const { data } = await supabase
       .from("projects")
       .select("custom_domain_allowed")
       .eq("id", id)
       .maybeSingle();
-    customDomainAllowed = data?.custom_domain_allowed === true;
+    customDomainAllowed = data?.custom_domain_allowed !== false;
   } catch {
-    // Not migrated yet, so nobody has the permission.
+    // Not migrated yet: everyone can connect one.
   }
 
   return (

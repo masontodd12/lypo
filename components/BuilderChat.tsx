@@ -468,7 +468,7 @@ export function BuilderChat({
   stripeConnected,
   initialDraft,
   initialStatus,
-  customDomainAllowed = false,
+  customDomainAllowed = true,
 }: {
   initialPages: Record<string, string> | null;
   initialMultiPage: boolean;
@@ -486,7 +486,7 @@ export function BuilderChat({
   initialDraft: OnboardingDraft | null;
   /** Publish state, since a domain can only point at a published site. */
   initialStatus: string;
-  /** Granted per site from the admin board. */
+  /** Self-serve by default; an admin can turn it off for one site. */
   customDomainAllowed?: boolean;
 }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
@@ -3634,9 +3634,9 @@ document.addEventListener("click", function (e) {
                   control={<ThemeToggle />}
                 />
 
-                {/* Only shown where it has been granted. Without this the
-                    owner meets a control that always refuses, which reads
-                    as broken rather than as not-for-you. */}
+                {/* Hidden only for a site an admin has blocked. Otherwise
+                    the owner meets a control that always refuses, which
+                    reads as broken rather than as switched off. */}
                 {customDomainAllowed && (
                   <CustomDomain
                     projectId={projectId}

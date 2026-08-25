@@ -287,9 +287,16 @@ alter table projects add column if not exists design jsonb;
 -- ---------------------------------------------------------------------------
 -- Whether this site may connect a domain of its own.
 --
--- Off by default and granted per site from the admin board. Every custom
--- domain is a real domain registered against the Vercel project, so how many
--- exist is worth deciding rather than letting it happen.
+-- ON by default: anyone with a published site can put it on a domain they
+-- own without asking. The column exists so the admin board can take that
+-- away from one site, which is an abuse lever rather than a queue.
 -- ---------------------------------------------------------------------------
 alter table projects
-  add column if not exists custom_domain_allowed boolean not null default false;
+  add column if not exists custom_domain_allowed boolean not null default true;
+
+-- Repairs a database that ran an earlier version of the line above, when the
+-- column defaulted to false and the permission was granted per site. Safe to
+-- run either way. If you have deliberately blocked a site by this point, this
+-- unblocks it and you will want to block it again from the board.
+alter table projects alter column custom_domain_allowed set default true;
+update projects set custom_domain_allowed = true where custom_domain_allowed is false;

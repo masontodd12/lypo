@@ -31,18 +31,20 @@ async function ownedProject(projectId: string) {
     return { error: "Not found" as const, status: 404 };
   }
 
-  // Read separately so a database without the migration still serves the
-  // rest of this route rather than failing the whole row.
-  let allowed = false;
+  // Connecting your own domain is self-serve, so this defaults to yes. The
+  // column only exists so one site can be cut off for abuse; anything that
+  // is not an explicit false is allowed, which also means a database without
+  // the migration keeps working normally.
+  let allowed = true;
   try {
     const { data } = await supabase
       .from("projects")
       .select("custom_domain_allowed")
       .eq("id", projectId)
       .maybeSingle();
-    allowed = data?.custom_domain_allowed === true;
+    allowed = data?.custom_domain_allowed !== false;
   } catch {
-    // Column not there yet, so nobody is allowed one.
+    // Column not there yet: everyone is allowed one.
   }
 
   return { supabase, project, allowed };
@@ -91,14 +93,12 @@ export async function POST(request: Request) {
   }
   const { supabase, project, allowed } = owned;
 
-  // The gate that actually matters. Hiding the controls in the builder is a
-  // courtesy; this is what stops someone calling the endpoint directly.
+  // Only reached for a site an admin has blocked. Hiding the controls in the
+  // builder is a courtesy; this is what stops someone calling the endpoint
+  // directly.
   if (!allowed) {
     return NextResponse.json(
-      {
-        error:
-          "Connecting your own domain is not switched on for this site yet.",
-      },
+      { error: "Custom domains are turned off for this site." },
       { status: 403 },
     );
   }

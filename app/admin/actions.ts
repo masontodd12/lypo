@@ -216,13 +216,13 @@ export async function deleteSiteForever(
 }
 
 /**
- * Lets one site connect its own domain, or takes that permission away.
+ * Blocks one site from connecting its own domain, or lets it again.
  *
- * Custom domains are handed out per site rather than to everyone: each one
- * is a real domain registered against the Vercel project, so the number of
- * them is a thing worth deciding rather than a thing that happens.
+ * Connecting a domain is self-serve, so this is an abuse lever, not a queue.
+ * It exists because every custom domain is a real domain registered against
+ * the Vercel project, and there has to be a way to cut one off.
  *
- * Revoking also disconnects whatever domain is attached. Leaving it live
+ * Blocking also disconnects whatever domain is attached. Leaving it live
  * while hiding the controls would mean nobody, owner or admin, could see or
  * remove it from inside Lypo.
  */

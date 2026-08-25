@@ -43,12 +43,14 @@ export default async function AdminSites({
         p.status === "published" && p.slug ? siteUrlFor(p.slug) : null,
       updatedAt: p.updated_at ?? null,
       customDomain: p.custom_domain ?? null,
-      customDomainAllowed: p.custom_domain_allowed ?? false,
+      // Anything but an explicit false is allowed, matching the route.
+      customDomainAllowed: p.custom_domain_allowed !== false,
     }));
 
   const published = sites.filter((s) => s.status === "published").length;
   const featured = sites.filter((s) => s.featured).length;
   const onOwnDomain = sites.filter((s) => s.customDomain).length;
+  const blocked = sites.filter((s) => !s.customDomainAllowed).length;
 
   return (
     <section className="py-12">
@@ -58,7 +60,7 @@ export default async function AdminSites({
       <p className="mt-2 text-sm text-ink-soft">
         {sites.length} project{sites.length === 1 ? "" : "s"} · {published}{" "}
         published · {featured} featured in the gallery · {onOwnDomain} on their
-        own domain
+        own domain{blocked > 0 && ` · ${blocked} blocked from domains`}
       </p>
 
       {error && (
