@@ -7,7 +7,32 @@ import { createClient } from "@/lib/supabase/client";
 import { safeNext } from "@/lib/site-url";
 
 /**
- * Sign-in by six-digit code, with the emailed link still working.
+ * How many digits the emailed code has.
+ *
+ * Supabase decides this, under Authentication > Providers > Email > Email OTP
+ * Length, so hardcoding it here means a dashboard setting silently
+ * contradicts the page: it said six digits, the email carried eight, and the
+ * sign-in button never became clickable. Set NEXT_PUBLIC_OTP_LENGTH to match
+ * whatever the project is configured for.
+ */
+const OTP_LENGTH = Math.min(
+  10,
+  Math.max(4, Number(process.env.NEXT_PUBLIC_OTP_LENGTH) || 6),
+);
+
+const SPELLED: Record<number, string> = {
+  4: "four",
+  5: "five",
+  6: "six",
+  7: "seven",
+  8: "eight",
+  9: "nine",
+  10: "ten",
+};
+const OTP_WORDS = `${SPELLED[OTP_LENGTH] ?? OTP_LENGTH}-digit`;
+
+/**
+ * Sign-in by one-time code, with the emailed link still working.
  *
  * The link alone was not reliable. Magic links are single use, and mail
  * scanners fetch every URL in a message to check it is safe, which spends
@@ -87,7 +112,7 @@ function LoginForm() {
 
   async function verify(submitted?: string) {
     const token = (submitted ?? code).replace(/\D/g, "");
-    if (token.length !== 6) return;
+    if (token.length !== OTP_LENGTH) return;
     setStatus("verifying");
     setErrorMessage("");
 
@@ -133,8 +158,8 @@ function LoginForm() {
       {step === "email" ? (
         <>
           <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-            No password. Enter your email and we&apos;ll send you a six-digit
-            code.
+            No password. Enter your email and we&apos;ll send you a{" "}
+            {OTP_WORDS} code.
           </p>
           <form onSubmit={sendCode} className="mt-10">
             <div className="flex items-center gap-3 border-b-2 border-ink py-3 focus-within:border-flame">
@@ -164,7 +189,7 @@ function LoginForm() {
       ) : (
         <>
           <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-            We sent a six-digit code to{" "}
+            We sent a {OTP_WORDS} code to{" "}
             <span className="font-medium">{email}</span>. It may take a minute.
             Check your spam folder if it does not show up.
           </p>
@@ -185,22 +210,29 @@ function LoginForm() {
               value={code}
               inputMode="numeric"
               autoComplete="one-time-code"
-              maxLength={6}
+              maxLength={OTP_LENGTH}
               onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+                const digits = e.target.value
+                  .replace(/\D/g, "")
+                  .slice(0, OTP_LENGTH);
                 setCode(digits);
                 setErrorMessage("");
                 // Six digits and there is nothing left to decide, so go.
-                if (digits.length === 6) void verify(digits);
+                if (digits.length === OTP_LENGTH) void verify(digits);
               }}
-              placeholder="000000"
-              aria-label="Six-digit sign-in code"
-              className="mt-2 w-full border-b-2 border-ink bg-transparent py-3 font-mono text-2xl tracking-[0.4em] outline-none placeholder:text-faint focus:border-flame"
+              placeholder={"0".repeat(OTP_LENGTH)}
+              aria-label={`${OTP_LENGTH}-digit sign-in code`}
+              // Wide letter-spacing makes a short code easy to read back,
+              // but eight digits of it overflow a narrow phone, so it eases
+              // off as the code gets longer.
+              className={`mt-2 w-full border-b-2 border-ink bg-transparent py-3 font-mono text-2xl outline-none placeholder:text-faint focus:border-flame ${
+                OTP_LENGTH > 6 ? "tracking-[0.2em]" : "tracking-[0.4em]"
+              }`}
             />
 
             <button
               type="submit"
-              disabled={status === "verifying" || code.length !== 6}
+              disabled={status === "verifying" || code.length !== OTP_LENGTH}
               className="mt-6 w-full rounded-full bg-flame py-3 text-sm font-medium text-paper transition hover:opacity-90 disabled:opacity-40"
             >
               {status === "verifying" ? "signing in…" : "sign in"}
