@@ -26,18 +26,11 @@ export default async function Builder({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, idea, html, slug, status, messages, kind, payments_enabled, pages, multi_page, logo_url")
+    .select("id, name, idea, html, slug, status, messages, kind, pages, multi_page, logo_url")
     .eq("id", id)
     .single();
 
   if (!project) notFound();
-
-  const { data: stripeAccount } = await supabase
-    .from("stripe_accounts")
-    .select("account_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  const stripeConnected = !!stripeAccount?.account_id;
 
   // Fetched on its own so the builder still loads on a database that has not
   // had the onboarding_draft migration applied yet. Selecting a column that
@@ -126,8 +119,6 @@ export default async function Builder({
         initialName={project.name}
         initialKind={project.kind}
         initialLogo={project.logo_url ?? null}
-        initialPaymentsEnabled={project.payments_enabled ?? false}
-        stripeConnected={stripeConnected}
         initialDraft={draftRow?.onboarding_draft ?? null}
         initialStatus={project.status}
         customDomainAllowed={customDomainAllowed}

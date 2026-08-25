@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { INTERVIEWS, INTERVIEW, type Question } from "@/lib/interviews";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { checkExternalLink } from "@/lib/links";
-import { PAYMENTS_ENABLED } from "@/lib/features";
 import { CustomDomain } from "@/components/CustomDomain";
 import TemplatePreview from "@/components/TemplatePreview";
 import {
@@ -464,8 +463,6 @@ export function BuilderChat({
   initialName,
   initialKind,
   initialLogo,
-  initialPaymentsEnabled,
-  stripeConnected,
   initialDraft,
   initialStatus,
   customDomainAllowed = true,
@@ -479,9 +476,6 @@ export function BuilderChat({
   initialName: string;
   initialKind: string | null;
   initialLogo: string | null;
-  initialPaymentsEnabled: boolean;
-  /** Whether the account has Stripe connected at all. */
-  stripeConnected: boolean;
   /** Saved onboarding answers, so a half-finished interview survives. */
   initialDraft: OnboardingDraft | null;
   /** Publish state, since a domain can only point at a published site. */
@@ -498,7 +492,6 @@ export function BuilderChat({
   // Which single pane is showing on a phone. Ignored from md up, where both
   // panes are visible at once.
   const [mobilePane, setMobilePane] = useState<"chat" | "site">("chat");
-  const [paymentsEnabled, setPaymentsEnabled] = useState(initialPaymentsEnabled);
   const [settingsBusy, setSettingsBusy] = useState(false);
   // A built site means onboarding is long over, so a stale draft is ignored.
   const draft = initialHtml ? null : initialDraft;
@@ -911,25 +904,6 @@ export function BuilderChat({
     }
   }
 
-  async function togglePayments() {
-    if (!stripeConnected) return;
-    const next = !paymentsEnabled;
-    setPaymentsEnabled(next);
-    setSettingsBusy(true);
-    try {
-      const supabase = createClient();
-      const { error: dbError } = await supabase
-        .from("projects")
-        .update({ payments_enabled: next })
-        .eq("id", projectId);
-      if (dbError) {
-        setPaymentsEnabled(!next);
-        setError("Couldn't save that setting. Try again.");
-      }
-    } finally {
-      setSettingsBusy(false);
-    }
-  }
 
   // Mirrors currentPage so an in-flight generation can tell whether the
   // user has since switched pages, without reading a stale closure.
@@ -3583,24 +3557,6 @@ document.addEventListener("click", function (e) {
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="mx-auto max-w-lg space-y-3 pb-4">
-                {PAYMENTS_ENABLED && (
-                <SettingRow
-                  title="payments"
-                  body={
-                    stripeConnected
-                      ? "Let this site take donations or payments. Money goes straight to your Stripe account."
-                      : "Connect Stripe in your account settings first. Until then this site cannot show payment buttons."
-                  }
-                  control={
-                    <Switch
-                      on={paymentsEnabled}
-                      disabled={!stripeConnected || settingsBusy}
-                      onChange={togglePayments}
-                      label="Accept payments on this site"
-                    />
-                  }
-                />
-                )}
 
                 <SettingRow
                   title="multi-page site"

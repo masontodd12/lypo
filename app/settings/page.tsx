@@ -2,9 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { EmailChangeForm } from "@/components/EmailChangeForm";
-import { StripeConnectCard } from "@/components/StripeConnectCard";
 import { SignOutButton } from "@/components/SignOutButton";
-import { PAYMENTS_ENABLED } from "@/lib/features";
 
 export default async function Settings() {
   const supabase = await createClient();
@@ -12,12 +10,6 @@ export default async function Settings() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-
-  const { data: stripeAccount } = await supabase
-    .from("stripe_accounts")
-    .select("account_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
 
   // Keep projects' notification email in sync with the account email
   if (user.email) {
@@ -58,9 +50,6 @@ export default async function Settings() {
           <EmailChangeForm currentEmail={user.email ?? ""} />
         </div>
 
-        {PAYMENTS_ENABLED && (
-          <StripeConnectCard connected={!!stripeAccount?.account_id} />
-        )}
 
         <div className="mt-14 border-t border-line pt-6 text-sm">
           <SignOutButton />

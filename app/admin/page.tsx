@@ -85,7 +85,6 @@ export default async function AdminHealth() {
     adminEmails: !!process.env.LYPO_ADMIN_EMAILS,
     serviceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
     resend: !!process.env.RESEND_API_KEY,
-    stripe: !!process.env.STRIPE_SECRET_KEY,
   };
 
   return (
@@ -189,7 +188,6 @@ export default async function AdminHealth() {
             "OPENAI_FALLBACK_MODEL (optional)",
           ],
           ["email sending", envSet.resend, "RESEND_API_KEY"],
-          ["payments", envSet.stripe, "STRIPE_SECRET_KEY"],
         ].map(([label, set, key]) => (
           <div
             key={key as string}

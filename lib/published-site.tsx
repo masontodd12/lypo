@@ -265,38 +265,6 @@ export async function renderSite(project: PublishedProject, pageHtml: string) {
     }
   });
 
-  // ---------- payments: only fire on .lypo-pay buttons ----------
-  document.addEventListener("click", function (e) {
-    var payBtn = e.target.closest && e.target.closest(".lypo-pay");
-    if (!payBtn) return;
-    e.preventDefault();
-    var amount = parseInt(payBtn.getAttribute("data-amount") || "0", 10);
-    var label = payBtn.getAttribute("data-label") || payBtn.textContent || "Payment";
-    if (!amount || amount < 100) {
-      notice("Payment amount is missing or too small.", "error");
-      return;
-    }
-    payBtn.disabled = true;
-    var originalText = payBtn.textContent;
-    payBtn.textContent = "opening checkout…";
-    fetch(${JSON.stringify(site + "/api/stripe/checkout")}, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ projectId: LYPO_PROJECT_ID, amount: amount, label: label })
-    }).then(function (r) { return r.json(); }).then(function (data) {
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        payBtn.disabled = false;
-        payBtn.textContent = originalText;
-        notice(data.error || "Payments aren't available for this site yet.", "error");
-      }
-    }).catch(function () {
-      payBtn.disabled = false;
-      payBtn.textContent = originalText;
-      notice("Couldn't reach the payment server.", "error");
-    });
-  });
 })();
 </script>
 <div style="position:fixed;bottom:10px;right:10px;z-index:99999;">

@@ -39,7 +39,7 @@ These are the signatures of a generated page.
 - ALL CAPS on anything longer than three words.
 - The three-across row of icon + bold title + one filler sentence.
 - Filler copy: "Bold care. Big love.", "Empowering communities", "Your journey starts here", "Where quality meets tradition". If you have nothing real to say, say less.
-- Stock CTA labels: "Get Started", "Learn More", "Discover More". Name the actual action: "Donate $25", "Book a cut", "See Sunday times", "Call for a quote".
+- Stock CTA labels: "Get Started", "Learn More", "Discover More". Name the actual action: "Book a cut", "See Sunday times", "Call for a quote", "Read the menu".
 - Visible captions, titles or labels on photos. No text under, over or beside an image naming what it is. Photos run uncaptioned; describe them in alt only.
 - A hero headline that fills the viewport, or an About section as the opening block.
 
@@ -123,7 +123,7 @@ export type PromptParts = {
   purpose: string;
   /** Single-page vs multi-page nav rules. */
   pageRule: string;
-  /** What this project may do about money. */
+  /** Lypo takes no money, ever. Stated plainly so the model never tries. */
   paymentsRule: string;
   /** Empty unless the project has a logo. */
   logoRule: string;
@@ -147,11 +147,11 @@ export function buildSystemPrompt(parts: PromptParts): string {
 // without the user having to ask.
 export const PURPOSES: Record<string, string> = {
   fundraiser:
-    "PURPOSE: FUNDRAISER. Include: who this is for and what happened in plain language; the specific ask with a number if the user gave one; a breakdown of what the money covers if the user gave specifics (medical bills, funeral costs, rent) rather than one generic ask line; a donate block; goal progress if a goal exists; an updates section formatted as dated entries so it can grow later, even if there's only one entry today; who is organizing and how to reach them. Tone is warm and direct, never corporate.",
+    "PURPOSE: FUNDRAISER. Include: who this is for and what happened in plain language; the specific ask with a number if the user gave one; a breakdown of what the money covers if the user gave specifics (medical bills, funeral costs, rent) rather than one generic ask line; how to actually give, using ONLY details the organizer gave (an address to post a cheque, a phone number, a time and place to drop something off) and no payment button of any kind; goal progress if a goal exists; an updates section formatted as dated entries so it can grow later, even if there's only one entry today; who is organizing and how to reach them. Tone is warm and direct, never corporate.",
   memorial:
     "PURPOSE: MEMORIAL. Include: name and dates; service time, date, and address if given; a life story section long enough to actually tell it, born, family, career, personality, in the user's own words, not a two-line summary; a photo wall if photos exist; a guestbook/condolence form; where to send flowers or donations if given. Tone is quiet and dignified. Muted palette, serif display type.",
   church:
-    "PURPOSE: CHURCH / PLACE OF WORSHIP. Include: service times; address with a map link; what a first-time visitor should expect (what a service is actually like, parking, dress, kids' programming, if the user described any of it); giving section only if payments are enabled or the user asks; contact. Warm and welcoming, never flashy.",
+    "PURPOSE: CHURCH / PLACE OF WORSHIP. Include: service times; address with a map link; what a first-time visitor should expect (what a service is actually like, parking, dress, kids' programming, if the user described any of it); a giving section only if the user asks for one, describing how to give in their own words, with no payment button; contact. Warm and welcoming, never flashy.",
   barbershop:
     "PURPOSE: BARBERSHOP / SALON. Include: service menu with real prices from the user; how to book. A \"book now\" button ONLY if a booking link was actually given, using that exact URL; with no link given there is no booking button anywhere, and the phone number carries the action instead. Also include: a work gallery if photos exist; hours; address; phone as a tap-to-call link (tel:). Bold local energy is welcome here.",
   restaurant: `PURPOSE: RESTAURANT. This is a real place people decide whether to drive to, so the site has one job: make them want to come and tell them how.
