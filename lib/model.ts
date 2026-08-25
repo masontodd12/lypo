@@ -1,6 +1,22 @@
 export const MODEL = "gpt-5-mini";
 
 /**
+ * The model used to write a page from scratch.
+ *
+ * A first build is where quality is decided and where someone judges whether
+ * Lypo is any good; an edit is a small patch against a page that already
+ * works. Splitting them means the expensive model is only paid for on the
+ * handful of calls that set the standard, while the many follow-up edits
+ * stay on the cheap one.
+ *
+ * Env-driven and defaulting to MODEL, so this file never names a model that
+ * might not exist on the account. Set OPENAI_BUILD_MODEL to switch it on;
+ * if that model then fails, the retry plan drops back to MODEL rather than
+ * leaving someone with no site at all.
+ */
+export const BUILD_MODEL = process.env.OPENAI_BUILD_MODEL || MODEL;
+
+/**
  * A stronger model to fall back to when the default keeps failing.
  *
  * Read from the environment rather than hard-coded so a model name that does
@@ -276,18 +292,20 @@ export async function generatePageStreamed({
   system,
   messages,
   maxTokens = 16000,
+  model = MODEL,
   onDelta,
 }: {
   system: string;
   messages: Message[];
   maxTokens?: number;
+  model?: string;
   onDelta: (text: string) => void;
 }): Promise<ModelResult> {
   try {
-    const first = await streamOnce(MODEL, system, messages, maxTokens, onDelta);
+    const first = await streamOnce(model, system, messages, maxTokens, onDelta);
     if (first.kind === "ok") {
       const { html, summary } = parse(first.raw);
-      return { ok: true, html, summary, attempts: 1, model: MODEL };
+      return { ok: true, html, summary, attempts: 1, model };
     }
     console.error("streamed attempt 1 failed:", first.kind, first.detail);
   } catch (e) {
@@ -295,7 +313,7 @@ export async function generatePageStreamed({
   }
 
   // Fall back to the non-streaming path, which handles its own retries.
-  const retried = await generatePage({ system, messages, maxTokens });
+  const retried = await generatePage({ system, messages, maxTokens, model });
   if (retried.ok) return { ...retried, attempts: retried.attempts + 1 };
   return { ...retried, attempts: retried.attempts + 1 };
 }
@@ -314,6 +332,7 @@ export async function editPage({
   history,
   pageName,
   maxTokens = 16000,
+  rewriteModel = MODEL,
   onDelta,
 }: {
   system: string;
@@ -322,6 +341,11 @@ export async function editPage({
   history: Message[];
   pageName: string;
   maxTokens?: number;
+  /**
+   * Used only if the patch is rejected and the page has to be rewritten in
+   * full. That is a build, not an edit, so it deserves the build model.
+   */
+  rewriteModel?: string;
   onDelta?: (text: string) => void;
 }): Promise<ModelResult & { patched?: boolean }> {
   const patchMessages: Message[] = [
@@ -391,8 +415,19 @@ export async function editPage({
     },
   ];
   const rewritten = onDelta
-    ? await generatePageStreamed({ system, messages: full, maxTokens, onDelta })
-    : await generatePage({ system, messages: full, maxTokens });
+    ? await generatePageStreamed({
+        system,
+        messages: full,
+        maxTokens,
+        model: rewriteModel,
+        onDelta,
+      })
+    : await generatePage({
+        system,
+        messages: full,
+        maxTokens,
+        model: rewriteModel,
+      });
   return { ...rewritten, patched: false };
 }
 
@@ -408,16 +443,23 @@ export async function generatePage({
   system,
   messages,
   maxTokens = 16000,
+  model = MODEL,
 }: {
   system: string;
   messages: Message[];
   maxTokens?: number;
+  model?: string;
 }): Promise<ModelResult> {
   const plan: { model: string; tokens: number }[] = [
-    { model: MODEL, tokens: maxTokens },
-    { model: MODEL, tokens: Math.round(maxTokens * 1.5) },
+    { model, tokens: maxTokens },
+    { model, tokens: Math.round(maxTokens * 1.5) },
   ];
-  if (FALLBACK_MODEL) {
+  // A build model that is failing repeatedly is worse than a cheaper one
+  // that works, so the last resort is always the model we know is available.
+  if (model !== MODEL) {
+    plan.push({ model: MODEL, tokens: Math.round(maxTokens * 1.5) });
+  }
+  if (FALLBACK_MODEL && FALLBACK_MODEL !== model) {
     plan.push({ model: FALLBACK_MODEL, tokens: Math.round(maxTokens * 1.5) });
   }
 
