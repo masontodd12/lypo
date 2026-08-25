@@ -48,6 +48,21 @@ export default async function Builder({
     .eq("id", id)
     .maybeSingle();
 
+  // Same reason, separately again: this column arrives with its own
+  // migration, and a builder that 404s because of it would be worse than one
+  // that simply shows no domain controls.
+  let customDomainAllowed = false;
+  try {
+    const { data } = await supabase
+      .from("projects")
+      .select("custom_domain_allowed")
+      .eq("id", id)
+      .maybeSingle();
+    customDomainAllowed = data?.custom_domain_allowed === true;
+  } catch {
+    // Not migrated yet, so nobody has the permission.
+  }
+
   return (
     <main className="flex h-screen flex-col">
       {/* Runs before the builder paints, so opening it in dark mode does not
@@ -114,6 +129,7 @@ export default async function Builder({
         stripeConnected={stripeConnected}
         initialDraft={draftRow?.onboarding_draft ?? null}
         initialStatus={project.status}
+        customDomainAllowed={customDomainAllowed}
       />
     </main>
   );

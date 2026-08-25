@@ -30,7 +30,22 @@ async function ownedProject(projectId: string) {
   if (!project || project.user_id !== user.id) {
     return { error: "Not found" as const, status: 404 };
   }
-  return { supabase, project };
+
+  // Read separately so a database without the migration still serves the
+  // rest of this route rather than failing the whole row.
+  let allowed = false;
+  try {
+    const { data } = await supabase
+      .from("projects")
+      .select("custom_domain_allowed")
+      .eq("id", projectId)
+      .maybeSingle();
+    allowed = data?.custom_domain_allowed === true;
+  } catch {
+    // Column not there yet, so nobody is allowed one.
+  }
+
+  return { supabase, project, allowed };
 }
 
 function unavailable() {
@@ -51,11 +66,14 @@ export async function GET(request: Request) {
   }
 
   const domain = owned.project.custom_domain as string | null;
-  if (!domain) return NextResponse.json({ domain: null });
+  if (!domain) {
+    return NextResponse.json({ domain: null, allowed: owned.allowed });
+  }
 
   const status = await domainStatus(domain);
   return NextResponse.json({
     domain,
+    allowed: owned.allowed,
     ...(status ?? { verified: false, misconfigured: true, verification: [] }),
     records: DNS_RECORDS,
     isApex: domain.split(".").length === 2,
@@ -71,7 +89,19 @@ export async function POST(request: Request) {
   if ("error" in owned) {
     return NextResponse.json({ error: owned.error }, { status: owned.status });
   }
-  const { supabase, project } = owned;
+  const { supabase, project, allowed } = owned;
+
+  // The gate that actually matters. Hiding the controls in the builder is a
+  // courtesy; this is what stops someone calling the endpoint directly.
+  if (!allowed) {
+    return NextResponse.json(
+      {
+        error:
+          "Connecting your own domain is not switched on for this site yet.",
+      },
+      { status: 403 },
+    );
+  }
 
   // "Check again" on an already-attached domain, rather than a new one.
   if (recheck && project.custom_domain) {
