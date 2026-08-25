@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { checkCustomDomain } from "@/lib/links";
 
 type Verification = { type: string; domain: string; value: string };
+
+type Offer = { domain: string; available: boolean; price: number | null };
 
 type State = {
   domain: string | null;
@@ -48,6 +50,72 @@ function Record({
   );
 }
 
+/**
+ * One domain, and what someone can do about it.
+ *
+ * The buy links go to registrars rather than anywhere of ours. Lypo does not
+ * sell domains and handles no money; sending people to a shop that does is
+ * the whole feature. Two are offered because prices differ and nobody should
+ * feel funnelled.
+ */
+function Result({
+  offer,
+  onPick,
+}: {
+  offer: Offer;
+  onPick: (domain: string) => void;
+}) {
+  const shops: [string, string][] = [
+    ["Porkbun", `https://porkbun.com/checkout/search?q=${encodeURIComponent(offer.domain)}`],
+    [
+      "Namecheap",
+      `https://www.namecheap.com/domains/registration/results/?domain=${encodeURIComponent(offer.domain)}`,
+    ],
+  ];
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line px-3 py-2">
+      <div className="min-w-0">
+        <p className="truncate font-mono text-sm">{offer.domain}</p>
+        <p className="mt-0.5 text-xs text-faint">
+          {offer.available ? (
+            <>
+              free to register
+              {offer.price !== null && (
+                <>
+                  {" "}
+                  · about ${offer.price}/year
+                  {/* Vercel quotes higher than most registrars, so this is a
+                      guide rather than the price they will pay. */}
+                  <span className="text-faint"> (shops vary)</span>
+                </>
+              )}
+            </>
+          ) : (
+            "already taken"
+          )}
+        </p>
+      </div>
+      {offer.available && (
+        <div className="flex shrink-0 items-center gap-2 text-xs">
+          {shops.map(([name, url]) => (
+            <a
+              key={name}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => onPick(offer.domain)}
+              className="font-medium text-flame transition hover:underline"
+            >
+              {name} ↗
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CustomDomain({
   projectId,
   published,
@@ -60,6 +128,22 @@ export function CustomDomain({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+
+  // The "I do not have one yet" path. Kept separate from `input` above, so
+  // searching for a name to buy never overwrites a domain someone is part
+  // way through typing.
+  const [mode, setMode] = useState<"have" | "find">("have");
+  const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [offer, setOffer] = useState<Offer | null>(null);
+  const [alternatives, setAlternatives] = useState<Offer[]>([]);
+  const [searchError, setSearchError] = useState("");
+  /** A domain they left to go and buy, remembered across visits. */
+  const [desired, setDesired] = useState<string | null>(null);
+  /** Set once a check shows the remembered name is no longer available. */
+  const [looksBought, setLooksBought] = useState(false);
+  /** The name already asked about, so the poll does not ask again. */
+  const checkedRef = useRef<string | null>(null);
 
   /**
    * Loads the current state, then keeps checking while DNS settles.
@@ -78,6 +162,31 @@ export function CustomDomain({
         const data = await res.json();
         if (cancelled || !res.ok) return;
         setState(data.domain ? data : null);
+        if (!data.domain) {
+          const wanted: string | null = data.desiredDomain ?? null;
+          setDesired(wanted);
+          // Once per name, not once per poll: this is a Vercel lookup, and
+          // the answer cannot change often enough to be worth asking every
+          // twenty seconds for as long as the panel is open.
+          if (wanted && checkedRef.current !== wanted) {
+            checkedRef.current = wanted;
+            // A name that has stopped being available is the closest honest
+            // signal that their purchase went through. It is a hint, not
+            // proof: someone else could have taken it. Either way the next
+            // step is the same, and connecting is what really decides.
+            try {
+              const look = await fetch(
+                `/api/domain/search?q=${encodeURIComponent(wanted)}`,
+              );
+              const found = await look.json();
+              if (!cancelled && look.ok && found.offer?.available === false) {
+                setLooksBought(true);
+              }
+            } catch {
+              // Silent: this only ever adds a prompt, never removes one.
+            }
+          }
+        }
         if (data.domain && data.verified && !data.misconfigured) {
           clearInterval(timer);
         }
@@ -97,8 +206,8 @@ export function CustomDomain({
     };
   }, [projectId]);
 
-  async function connect() {
-    const check = checkCustomDomain(input);
+  async function connect(override?: string) {
+    const check = checkCustomDomain(override ?? input);
     if (!check.ok) {
       setError(check.reason);
       return;
@@ -116,12 +225,54 @@ export function CustomDomain({
       else {
         setState(data);
         setInput("");
+        // Connected, so the "you were getting X" prompt has done its job.
+        setDesired(null);
+        setLooksBought(false);
       }
     } catch {
       setError("Couldn't reach the server.");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function search(term?: string) {
+    const q = (term ?? query).trim();
+    if (!q) return;
+    setSearching(true);
+    setSearchError("");
+    setOffer(null);
+    setAlternatives([]);
+    try {
+      const res = await fetch(`/api/domain/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setSearchError(data.error ?? "Couldn't check that one.");
+        return;
+      }
+      setOffer(data.offer);
+      setAlternatives(data.alternatives ?? []);
+    } catch {
+      setSearchError("Couldn't reach the server.");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  /**
+   * Remembers a name they are going off to buy.
+   *
+   * Deliberately fire-and-forget: they are already on their way to a
+   * registrar in another tab, and a failed write here should not interrupt
+   * that. Worst case they type the domain in by hand when they come back.
+   */
+  function remember(domain: string | null) {
+    setDesired(domain);
+    void fetch("/api/domain/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectId, domain }),
+    }).catch(() => {});
   }
 
   async function recheck() {
@@ -181,28 +332,151 @@ export function CustomDomain({
             </p>
           ) : (
             <>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <input
-                  value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    setError("");
-                  }}
-                  onKeyDown={(e) => e.key === "Enter" && connect()}
-                  placeholder="yourbusiness.com"
-                  aria-label="Your domain"
-                  className="min-w-0 flex-1 rounded-lg border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-flame"
-                />
-                <button
-                  type="button"
-                  onClick={connect}
-                  disabled={busy || !input.trim()}
-                  className="shrink-0 rounded-full bg-flame px-4 py-2 text-sm font-medium text-paper transition hover:bg-flame-bright disabled:opacity-40"
-                >
-                  {busy ? "connecting…" : "connect"}
-                </button>
+              {/* The return trip. Shown before anything else, because
+                  someone who left to buy a name came back to do exactly
+                  this and should not have to find it again. */}
+              {desired && (
+                <div className="mt-3 rounded-lg border border-flame/40 bg-flame/5 p-3">
+                  <p className="text-xs leading-relaxed">
+                    You were getting{" "}
+                    <span className="font-mono font-medium">{desired}</span>.
+                    {looksBought
+                      ? " It is registered now, so if that was you, connect it."
+                      : " Bought it? Connect it here."}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInput(desired);
+                        setMode("have");
+                        void connect(desired);
+                      }}
+                      disabled={busy}
+                      className="rounded-full bg-flame px-3 py-1.5 text-xs font-medium text-paper transition hover:bg-flame-bright disabled:opacity-40"
+                    >
+                      {busy ? "connecting…" : `connect ${desired}`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => remember(null)}
+                      className="text-xs text-faint transition hover:text-flame"
+                    >
+                      never mind
+                    </button>
+                  </div>
+                  {error && <p className="mt-2 text-xs text-flame">{error}</p>}
+                </div>
+              )}
+
+              <div className="mt-3 flex gap-3 border-b border-line text-xs">
+                {(
+                  [
+                    ["have", "I have a domain"],
+                    ["find", "I need one"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setMode(id)}
+                    className={`-mb-px border-b-2 pb-2 font-medium transition ${
+                      mode === id
+                        ? "border-flame text-flame"
+                        : "border-transparent text-ink-soft hover:text-flame"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-              {error && <p className="mt-2 text-xs text-flame">{error}</p>}
+
+              {mode === "have" ? (
+                <>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <input
+                      value={input}
+                      onChange={(e) => {
+                        setInput(e.target.value);
+                        setError("");
+                      }}
+                      onKeyDown={(e) => e.key === "Enter" && connect()}
+                      placeholder="yourbusiness.com"
+                      aria-label="Your domain"
+                      className="min-w-0 flex-1 rounded-lg border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-flame"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => connect()}
+                      disabled={busy || !input.trim()}
+                      className="shrink-0 rounded-full bg-flame px-4 py-2 text-sm font-medium text-paper transition hover:bg-flame-bright disabled:opacity-40"
+                    >
+                      {busy ? "connecting…" : "connect"}
+                    </button>
+                  </div>
+                  {error && !desired && (
+                    <p className="mt-2 text-xs text-flame">{error}</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="mt-3 text-xs leading-relaxed text-ink-soft">
+                    Type the name you want. We will tell you if it is free.
+                    You buy it from a registrar, we never handle the money,
+                    and it is usually about ten to fifteen dollars a year.
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <input
+                      value={query}
+                      onChange={(e) => {
+                        setQuery(e.target.value);
+                        setSearchError("");
+                      }}
+                      onKeyDown={(e) => e.key === "Enter" && search()}
+                      placeholder="joesbarbershop"
+                      aria-label="Domain name to look for"
+                      className="min-w-0 flex-1 rounded-lg border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-flame"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => search()}
+                      disabled={searching || !query.trim()}
+                      className="shrink-0 rounded-full border border-line px-4 py-2 text-sm font-medium transition hover:border-flame hover:text-flame disabled:opacity-40"
+                    >
+                      {searching ? "checking…" : "check"}
+                    </button>
+                  </div>
+                  {searchError && (
+                    <p className="mt-2 text-xs text-flame">{searchError}</p>
+                  )}
+
+                  {offer && (
+                    <div className="mt-3 space-y-2">
+                      <Result offer={offer} onPick={remember} />
+                      {!offer.available && alternatives.length > 0 && (
+                        <>
+                          <p className="pt-1 text-xs text-ink-soft">
+                            These are free:
+                          </p>
+                          {alternatives.map((a) => (
+                            <Result
+                              key={a.domain}
+                              offer={a}
+                              onPick={remember}
+                            />
+                          ))}
+                        </>
+                      )}
+                      {!offer.available && alternatives.length === 0 && (
+                        <p className="text-xs text-ink-soft">
+                          Nothing close was free. Try adding your town, or the
+                          kind of work you do.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
         </>

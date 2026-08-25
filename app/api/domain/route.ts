@@ -36,18 +36,20 @@ async function ownedProject(projectId: string) {
   // is not an explicit false is allowed, which also means a database without
   // the migration keeps working normally.
   let allowed = true;
+  let desiredDomain: string | null = null;
   try {
     const { data } = await supabase
       .from("projects")
-      .select("custom_domain_allowed")
+      .select("custom_domain_allowed, desired_domain")
       .eq("id", projectId)
       .maybeSingle();
     allowed = data?.custom_domain_allowed !== false;
+    desiredDomain = (data?.desired_domain as string | null) ?? null;
   } catch {
-    // Column not there yet: everyone is allowed one.
+    // Columns not there yet: everyone is allowed one, nobody is mid-purchase.
   }
 
-  return { supabase, project, allowed };
+  return { supabase, project, allowed, desiredDomain };
 }
 
 function unavailable() {
@@ -69,7 +71,11 @@ export async function GET(request: Request) {
 
   const domain = owned.project.custom_domain as string | null;
   if (!domain) {
-    return NextResponse.json({ domain: null, allowed: owned.allowed });
+    return NextResponse.json({
+      domain: null,
+      allowed: owned.allowed,
+      desiredDomain: owned.desiredDomain,
+    });
   }
 
   const status = await domainStatus(domain);
@@ -162,6 +168,12 @@ export async function POST(request: Request) {
       { status: added.alreadyTaken ? 409 : 502 },
     );
   }
+
+  // They have it now, so stop offering to help them buy it.
+  await supabase
+    .from("projects")
+    .update({ desired_domain: null })
+    .eq("id", project.id);
 
   return NextResponse.json({
     domain: check.domain,

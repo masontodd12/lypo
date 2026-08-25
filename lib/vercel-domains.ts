@@ -154,3 +154,59 @@ export async function removeDomain(domain: string): Promise<boolean> {
   );
   return ok;
 }
+
+export type DomainOffer = {
+  domain: string;
+  available: boolean;
+  /** Yearly price in whole currency units, when Vercel will quote one. */
+  price: number | null;
+};
+
+/**
+ * Whether a domain can still be registered, and roughly what it costs.
+ *
+ * Only ever used to help someone who does not own a domain yet decide what
+ * to go and buy. Lypo does not sell domains and takes no money, so this is a
+ * lookup and nothing more.
+ *
+ * Price is best-effort: Vercel does not quote every extension, and the ones
+ * it does quote run higher than most registrars. Treat a null as "we could
+ * not find out" rather than "free".
+ */
+export async function domainOffer(domain: string): Promise<DomainOffer | null> {
+  const status = await call(
+    `/v4/domains/status?name=${encodeURIComponent(domain)}${TEAM ? `&teamId=${encodeURIComponent(TEAM)}` : ""}`,
+  );
+  if (!status.ok) return null;
+
+  const available = status.body.available === true;
+  if (!available) return { domain, available: false, price: null };
+
+  // Asked for separately, and allowed to fail on its own: knowing a name is
+  // free is the useful half, and losing it because a price lookup 404'd
+  // would be a poor trade.
+  const priced = await call(
+    `/v4/domains/price?name=${encodeURIComponent(domain)}${TEAM ? `&teamId=${encodeURIComponent(TEAM)}` : ""}`,
+  );
+  const price =
+    priced.ok && typeof priced.body.price === "number"
+      ? priced.body.price
+      : null;
+
+  return { domain, available: true, price };
+}
+
+/**
+ * Alternatives to offer when the name someone wanted is gone.
+ *
+ * Same second-level name on other endings rather than clever variations on
+ * the name itself: someone who typed "joesbarbershop" wants that name, and
+ * "joesbarbershopofficial" is the kind of suggestion that makes a business
+ * look like it could not get its own name.
+ */
+export function alternativesFor(domain: string): string[] {
+  const base = domain.split(".")[0];
+  return ["com", "co", "net", "shop", "studio", "cafe"]
+    .map((tld) => `${base}.${tld}`)
+    .filter((d) => d !== domain);
+}

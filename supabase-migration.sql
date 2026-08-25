@@ -300,3 +300,12 @@ alter table projects
 -- unblocks it and you will want to block it again from the board.
 alter table projects alter column custom_domain_allowed set default true;
 update projects set custom_domain_allowed = true where custom_domain_allowed is false;
+
+-- ---------------------------------------------------------------------------
+-- The domain someone went off to buy but does not own yet.
+--
+-- We cannot watch their registrar, so this is what makes the return trip
+-- work: they come back, maybe the next day, and Lypo already knows which name
+-- they were after instead of asking them to remember it.
+-- ---------------------------------------------------------------------------
+alter table projects add column if not exists desired_domain text;
