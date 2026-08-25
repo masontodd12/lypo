@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { RESERVED_SUBDOMAINS } from "@/lib/site-url";
-
-const SLUG_RULE = /^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])?$/;
+import { checkSlug } from "@/lib/site-url";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -33,23 +31,14 @@ export async function POST(request: Request) {
   let slug = project.slug;
 
   if (desiredSlug) {
-    const cleaned = String(desiredSlug).toLowerCase().trim();
-    if (!SLUG_RULE.test(cleaned)) {
+    const check = checkSlug(String(desiredSlug));
+    if (!check.ok) {
       return NextResponse.json(
-        {
-          error:
-            "Links can use lowercase letters, numbers, and hyphens (3-40 characters).",
-        },
-        { status: 400 },
+        { error: check.reason },
+        { status: check.reason.includes("reserved") ? 409 : 400 },
       );
     }
-    // Slugs become subdomains, so platform names are off limits.
-    if (RESERVED_SUBDOMAINS.has(cleaned)) {
-      return NextResponse.json(
-        { error: `"${cleaned}" is reserved. Try another name.` },
-        { status: 409 },
-      );
-    }
+    const cleaned = check.slug;
     // Is it taken by someone else?
     const { data: existing } = await supabase
       .from("projects")

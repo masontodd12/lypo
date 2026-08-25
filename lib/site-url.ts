@@ -34,6 +34,36 @@ export const RESERVED_SUBDOMAINS = new Set([
   "www2",
 ]);
 
+/**
+ * What a slug is allowed to look like.
+ *
+ * Lives here rather than beside the publish route because the admin board
+ * changes addresses too, and two copies of this rule would eventually
+ * disagree about what is valid.
+ */
+export const SLUG_RULE = /^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])?$/;
+
+export type SlugCheck =
+  | { ok: true; slug: string }
+  | { ok: false; reason: string };
+
+/** Validates a desired address, without touching the database. */
+export function checkSlug(raw: string): SlugCheck {
+  const slug = String(raw ?? "").toLowerCase().trim();
+  if (!SLUG_RULE.test(slug)) {
+    return {
+      ok: false,
+      reason:
+        "Links can use lowercase letters, numbers, and hyphens (3-40 characters).",
+    };
+  }
+  // Slugs become subdomains, so platform names are off limits.
+  if (RESERVED_SUBDOMAINS.has(slug)) {
+    return { ok: false, reason: `"${slug}" is reserved. Try another name.` };
+  }
+  return { ok: true, slug };
+}
+
 /** Bare app host, e.g. "lypo.dev" or "localhost:3000". */
 export function appHost(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL ?? "https://lypo.dev")

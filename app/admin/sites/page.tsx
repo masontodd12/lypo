@@ -16,7 +16,9 @@ export default async function AdminSites({
   // this page exists precisely to see across accounts.
   const { data, error } = await db
     .from("projects")
-    .select("id, name, slug, status, featured, owner_email, updated_at")
+    .select(
+      "id, name, slug, status, featured, owner_email, updated_at, custom_domain, custom_domain_allowed",
+    )
     .is("deleted_at", null)
     .order("updated_at", { ascending: false })
     .limit(200);
@@ -40,10 +42,13 @@ export default async function AdminSites({
       liveUrl:
         p.status === "published" && p.slug ? siteUrlFor(p.slug) : null,
       updatedAt: p.updated_at ?? null,
+      customDomain: p.custom_domain ?? null,
+      customDomainAllowed: p.custom_domain_allowed ?? false,
     }));
 
   const published = sites.filter((s) => s.status === "published").length;
   const featured = sites.filter((s) => s.featured).length;
+  const onOwnDomain = sites.filter((s) => s.customDomain).length;
 
   return (
     <section className="py-12">
@@ -52,14 +57,20 @@ export default async function AdminSites({
       </h1>
       <p className="mt-2 text-sm text-ink-soft">
         {sites.length} project{sites.length === 1 ? "" : "s"} · {published}{" "}
-        published · {featured} featured in the gallery
+        published · {featured} featured in the gallery · {onOwnDomain} on their
+        own domain
       </p>
 
       {error && (
         <div className="mt-4 rounded-xl border border-flame/40 bg-flame/5 p-4 text-sm">
           Couldn&apos;t load projects: {error.message}
-          {error.message.includes("featured") &&
-            " Run supabase-migration.sql to add the featured column."}
+          {/* Selecting a column that does not exist fails the whole query,
+              so a missing migration takes the board down rather than one
+              control. Naming it is the difference between a five-second fix
+              and an afternoon. */}
+          {(error.message.includes("featured") ||
+            error.message.includes("custom_domain_allowed")) &&
+            " Run supabase-migration.sql to add the missing column."}
         </div>
       )}
 
