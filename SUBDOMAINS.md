@@ -44,7 +44,7 @@ Should resolve to Vercel. Then publish a site and open its subdomain. SSL certif
 
 ## what changed in the code
 
-**`middleware.ts`** — Note: your middleware file was previously named `middleware.ts ` with a trailing space, which meant Next.js never loaded it. Custom domain routing and middleware session refresh had never actually run. Renamed correctly and now handles:
+**`proxy.ts`** — Next renamed the `middleware` file convention to `proxy`, and warns on the old name at boot. (Before that, this file was once named `middleware.ts ` with a trailing space, which meant Next never loaded it at all, so custom domain routing and session refresh had never actually run.) It now handles:
 
 - `<slug>.lypo.dev` rewrites to `/s/<slug>`, and `<slug>.lypo.dev/about` to `/s/<slug>/about`
 - Reserved subdomains (`www`, `api`, `app`, `dashboard`, and ~20 more) are excluded, so they can never be captured by a user's site

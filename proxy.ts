@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { RESERVED_SUBDOMAINS } from "@/lib/site-url";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const host = (request.headers.get("host") ?? "").toLowerCase();
   const appHost = (process.env.NEXT_PUBLIC_SITE_URL ?? "")
     .replace(/^https?:\/\//, "")

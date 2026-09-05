@@ -331,7 +331,7 @@ export function stripPlaceholders(html: string): {
     // the business is gone.
     .replace(
       /<a\b[^>]*href=["']tel:[^"']*(?:x{3,}|5{3}[-.\s]?5{3}[-.\s]?5{4}|0{7,}|1234567)[^"']*["'][^>]*>[\s\S]{0,200}?<\/a>/gi,
-      (m) => {
+      () => {
         removed.push("fake phone link");
         return "";
       },
