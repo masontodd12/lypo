@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { appOrigin } from "@/lib/site-url";
+import { appHost, appOrigin } from "@/lib/site-url";
 import { SiteNavBridge } from "@/components/SiteNavBridge";
 
 /**
@@ -97,6 +97,29 @@ export async function renderSite(project: PublishedProject, pageHtml: string) {
 
   const site = appOrigin();
   const navBase = await navBaseFor(project);
+
+  /**
+   * Whether the framed site may run same-origin with the page framing it.
+   *
+   * A srcdoc iframe inherits its parent's origin, so allow-scripts together
+   * with allow-same-origin lets the framed document reach parent.document.
+   * On the site's own host, my-site.lypo.dev or a custom domain, that only
+   * ever reaches that site's own origin, and localStorage keeps working for
+   * pages that use it.
+   *
+   * On lypo.dev itself, where the legacy /s/<slug> path still serves, the
+   * parent is the signed-in app. Supabase's cookies are readable from
+   * JavaScript by design, so a page written by a model, at the request of
+   * whoever asked for it, could read a visitor's session out of the parent
+   * document. Same-origin is dropped there; the site still runs, it just
+   * cannot see out of its frame.
+   */
+  const host = ((await headers()).get("host") ?? "").toLowerCase();
+  const bare = appHost();
+  const onAppHost = host === bare || host === `www.${bare}`;
+  const sandbox = onAppHost
+    ? "allow-scripts allow-forms allow-popups"
+    : "allow-scripts allow-forms allow-same-origin allow-popups";
 
   const injected = `
 <script>
@@ -283,7 +306,7 @@ export async function renderSite(project: PublishedProject, pageHtml: string) {
       <SiteNavBridge base={navBase} />
       <iframe
         srcDoc={html}
-        sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
+        sandbox={sandbox}
         style={{
           position: "fixed",
           inset: 0,

@@ -3526,7 +3526,7 @@ document.addEventListener("click", function (e) {
                 <div className="flex min-h-0 flex-1 items-start justify-center overflow-hidden">
                   <iframe
                     srcDoc={previewHtml}
-                    sandbox="allow-scripts allow-forms allow-same-origin"
+                    sandbox="allow-scripts allow-forms"
                     title="Site preview (phone)"
                     // Always light: this is the visitor's view of the site,
                     // not Lypo's chrome, so it must not follow the editor theme.
@@ -3536,7 +3536,7 @@ document.addEventListener("click", function (e) {
               ) : (
                 <iframe
                   srcDoc={previewHtml}
-                  sandbox="allow-scripts allow-forms allow-same-origin"
+                  sandbox="allow-scripts allow-forms"
                   title="Site preview"
                   // Always light, for the same reason as the phone preview.
                   className="min-h-0 w-full flex-1 rounded-lg border border-line bg-white"

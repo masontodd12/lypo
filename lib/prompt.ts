@@ -162,7 +162,7 @@ HOME page must include, in roughly this order:
 - Their story, written from the owner's own words. This is the section that makes a restaurant feel like a place instead of a listing, so give it real room. Do not compress it into a slogan and do not invent history.
 - Hours, laid out so a person can scan them, not buried in a paragraph
 - Address as text plus a map link (https://maps.google.com/?q=<url-encoded address>)
-- Phone as a tap-to-call link: <a href="tel:+1XXXXXXXXXX">
+- Phone as a tap-to-call link, using the real digits the owner gave and no other: <a href="tel:"> with their actual number. If you were given no phone number, there is no call link anywhere on the site.
 - A clear link to the menu page
 - An "order online" button ONLY if an ordering link was actually given. If one was, use that exact URL. If none was given, there is no ordering button anywhere on the site: no "Order Online", no "Order Now", no link to a delivery app you assumed they use. Point people at the phone number instead.
 - Photos of the food or the room if any were given

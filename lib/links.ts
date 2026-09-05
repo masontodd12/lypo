@@ -323,7 +323,19 @@ export function stripPlaceholders(html: string): {
     .replace(/(>)\s*(?:tbd|tba|\?{2,})\s*(<)/gi, (m, a: string, b: string) => {
       removed.push(m.slice(1, -1).trim());
       return `${a}${b}`;
-    });
+    })
+    // A tap-to-call link with a stand-in number: tel:+1XXXXXXXXXX,
+    // tel:555-555-5555, tel:0000000000. The whole anchor goes, not just the
+    // href, because a button reading "Call us" that dials nothing is worse
+    // than no button: someone taps it standing outside a shop and concludes
+    // the business is gone.
+    .replace(
+      /<a\b[^>]*href=["']tel:[^"']*(?:x{3,}|5{3}[-.\s]?5{3}[-.\s]?5{4}|0{7,}|1234567)[^"']*["'][^>]*>[\s\S]{0,200}?<\/a>/gi,
+      (m) => {
+        removed.push("fake phone link");
+        return "";
+      },
+    );
 
   return { html: cleaned, removed };
 }
