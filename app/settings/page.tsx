@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { EmailChangeForm } from "@/components/EmailChangeForm";
 import { SignOutButton } from "@/components/SignOutButton";
+import { PlanCard } from "@/components/PlanCard";
+import { SUBSCRIPTIONS_ENABLED, getSubscription } from "@/lib/billing";
 
 export default async function Settings() {
   const supabase = await createClient();
@@ -19,6 +21,11 @@ export default async function Settings() {
       .eq("user_id", user.id)
       .neq("owner_email", user.email);
   }
+
+  const sub = SUBSCRIPTIONS_ENABLED
+    ? await getSubscription(supabase, user.id)
+    : null;
+  const live = !!sub && (sub.status === "active" || sub.status === "trialing");
 
   return (
     <main className="mx-auto max-w-2xl px-6">
@@ -50,6 +57,21 @@ export default async function Settings() {
           <EmailChangeForm currentEmail={user.email ?? ""} />
         </div>
 
+
+        {SUBSCRIPTIONS_ENABLED && (
+          <PlanCard
+            subscribed={live}
+            status={sub?.status ?? null}
+            renewsOn={
+              sub?.current_period_end
+                ? new Date(sub.current_period_end).toLocaleDateString("en-US", {
+                    month: "long",
+                    day: "numeric",
+                  })
+                : null
+            }
+          />
+        )}
 
         <div className="mt-14 border-t border-line pt-6 text-sm">
           <SignOutButton />

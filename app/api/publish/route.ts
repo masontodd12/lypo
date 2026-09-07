@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkSlug } from "@/lib/site-url";
+import { canPublish } from "@/lib/billing";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -21,6 +22,19 @@ export async function POST(request: Request) {
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
+  // The one place a subscription is required. Checked here rather than in
+  // the builder so that hiding the button is a courtesy and this is the rule.
+  if (!(await canPublish(supabase, user))) {
+    return NextResponse.json(
+      {
+        error:
+          "Publishing needs a Lypo subscription. Building and previewing stay free.",
+        needsSubscription: true,
+      },
+      { status: 402 },
+    );
+  }
+
   if (!project.html) {
     return NextResponse.json(
       { error: "Build something before publishing." },

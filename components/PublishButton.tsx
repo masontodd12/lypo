@@ -25,6 +25,8 @@ export function PublishButton({
   const [desired, setDesired] = useState(initialSlug ?? "");
   const [story, setStory] = useState("");
   const [error, setError] = useState("");
+  /** Publishing was refused because there is no subscription. */
+  const [needsPlan, setNeedsPlan] = useState(false);
 
   // Canonical published address: my-site.lypo.dev in production,
   // /s/my-site locally and on preview deploys.
@@ -38,6 +40,22 @@ export function PublishButton({
       ? `/s/${slug}`
       : `${slug}.${appHost}`
     : null;
+
+  /** Sends them to Stripe Checkout, then back here to publish. */
+  async function subscribe() {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/stripe/checkout", { method: "POST" });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else setError(data.error ?? "Couldn't start checkout.");
+    } catch {
+      setError("Couldn't reach the server.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function publish(withSlug?: string) {
     setBusy(true);
@@ -56,6 +74,11 @@ export function PublishButton({
       if (res.ok) {
         setSlug(data.slug);
         setStatus("published");
+        setPicking(false);
+      } else if (data.needsSubscription) {
+        // Not an error they can retry their way out of, so it gets its own
+        // state and a way forward rather than red text saying no.
+        setNeedsPlan(true);
         setPicking(false);
       } else {
         setError(data.error ?? "Publish failed.");
@@ -162,6 +185,31 @@ export function PublishButton({
             aria-label="What is this site for"
             className="mt-1 w-full border-b-2 border-ink bg-transparent py-2 text-sm outline-none placeholder:text-faint focus:border-flame"
           />
+          {needsPlan && (
+            <div className="mt-2 rounded-lg border border-flame/40 bg-flame/5 p-3">
+              <p className="text-xs leading-relaxed">
+                Publishing needs a Lypo plan. Everything you have built is
+                saved, and building and previewing stay free.
+              </p>
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={subscribe}
+                  disabled={busy}
+                  className="rounded-full bg-flame px-3 py-1.5 text-xs font-medium text-paper transition hover:opacity-90 disabled:opacity-40"
+                >
+                  {busy ? "opening…" : "see plans"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNeedsPlan(false)}
+                  className="text-xs text-faint transition hover:text-flame"
+                >
+                  not now
+                </button>
+              </div>
+            </div>
+          )}
           {error && <p className="mt-2 text-xs text-flame">{error}</p>}
           <div className="mt-4 flex items-center justify-end gap-3">
             <button

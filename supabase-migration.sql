@@ -309,3 +309,32 @@ update projects set custom_domain_allowed = true where custom_domain_allowed is 
 -- they were after instead of asking them to remember it.
 -- ---------------------------------------------------------------------------
 alter table projects add column if not exists desired_domain text;
+
+-- ---------------------------------------------------------------------------
+-- Subscriptions to Lypo itself.
+--
+-- Money to us, on our own Stripe account. Not to be confused with the Connect
+-- integration that used to live here, which sent money to site owners and was
+-- removed: there are no per-user Stripe accounts and no payouts.
+--
+-- Only the webhook writes this, through the service role. A person can read
+-- their own row so the app can show whether they are subscribed, and can
+-- change nothing: otherwise anyone could set their own status to "active".
+-- ---------------------------------------------------------------------------
+create table if not exists subscriptions (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  status text not null default 'incomplete',
+  current_period_end timestamptz,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists subscriptions_customer_idx
+  on subscriptions (stripe_customer_id);
+
+alter table subscriptions enable row level security;
+
+drop policy if exists "read own subscription" on subscriptions;
+create policy "read own subscription" on subscriptions
+  for select using (auth.uid() = user_id);
