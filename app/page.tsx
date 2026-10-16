@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PromptCta } from "@/components/PromptCta";
 import { EXAMPLES } from "@/lib/examples";
+import { FounderJsonLd } from "@/lib/founder";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function Home() {
@@ -11,6 +12,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen">
+      <FounderJsonLd />
       {/* ---------- Nav ---------- */}
       <header className="mx-auto flex max-w-6xl items-start justify-between px-6 pt-8">
         <Link
@@ -172,7 +174,12 @@ export default async function Home() {
       <footer className="border-t border-line">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-8 text-xs text-faint">
           <span>no code · no gatekeeping</span>
-          <span>lypo © {new Date().getFullYear()}</span>
+          <span>
+            lypo © {new Date().getFullYear()} · made by{" "}
+            <Link href="/about" className="transition hover:text-flame">
+              Mason Todd
+            </Link>
+          </span>
         </div>
       </footer>
     </main>
