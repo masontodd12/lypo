@@ -338,3 +338,12 @@ alter table subscriptions enable row level security;
 drop policy if exists "read own subscription" on subscriptions;
 create policy "read own subscription" on subscriptions
   for select using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
+-- Sites come down when their owner's plan stops.
+--
+-- Billing sets status to 'suspended' (never 'draft', so it only ever restores
+-- what it took down). Drops the old two-value status check if one was ever
+-- added, which would otherwise reject the new value silently.
+-- ---------------------------------------------------------------------------
+alter table projects drop constraint if exists projects_status_check;

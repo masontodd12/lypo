@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { STRIPE_READY, getSubscription, stripeClient } from "@/lib/billing";
+import {
+  PRICES,
+  STRIPE_READY,
+  getSubscription,
+  stripeClient,
+  type Interval,
+} from "@/lib/billing";
 import { appOrigin } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +18,7 @@ export const dynamic = "force-dynamic";
  * per-user Stripe account and no payout to anybody else: that was a
  * different product and it was removed.
  */
-export async function POST() {
+export async function POST(request: Request) {
   if (!STRIPE_READY) {
     return NextResponse.json(
       { error: "Subscriptions are not switched on yet." },
@@ -28,6 +34,17 @@ export async function POST() {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
+  // { interval: "month" | "year" }; monthly when nothing is said.
+  const body = await request.json().catch(() => ({}));
+  const interval: Interval = body?.interval === "year" ? "year" : "month";
+  const price = PRICES[interval];
+  if (!price) {
+    return NextResponse.json(
+      { error: `The ${interval}ly plan is not set up yet.` },
+      { status: 503 },
+    );
+  }
+
   const origin = appOrigin();
   const stripe = stripeClient();
 
@@ -39,7 +56,7 @@ export async function POST() {
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      line_items: [{ price: process.env.STRIPE_PRICE_ID!, quantity: 1 }],
+      line_items: [{ price, quantity: 1 }],
       ...(existing?.stripe_customer_id
         ? { customer: existing.stripe_customer_id }
         : { customer_email: user.email }),

@@ -21,11 +21,15 @@ export function PlanCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  async function go(path: string) {
+  async function go(path: string, interval?: "month" | "year") {
     setBusy(true);
     setError("");
     try {
-      const res = await fetch(path, { method: "POST" });
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(interval ? { interval } : {}),
+      });
       const data = await res.json();
       if (data.url) window.location.href = data.url;
       else setError(data.error ?? "Something went wrong.");
@@ -42,7 +46,7 @@ export function PlanCard({
       <p className="mt-1 text-sm text-ink-soft">
         {subscribed
           ? "Your sites are published and live."
-          : "Building and previewing are free. A plan is what publishes a site."}
+          : "Building and previewing are free. A plan is what publishes a site and keeps it live."}
       </p>
 
       {subscribed ? (
@@ -66,14 +70,24 @@ export function PlanCard({
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => go("/api/stripe/checkout")}
-          disabled={busy}
-          className="mt-4 rounded-full bg-flame px-5 py-2.5 text-sm font-medium text-paper transition hover:opacity-90 disabled:opacity-40"
-        >
-          {busy ? "opening…" : "see plans"}
-        </button>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => go("/api/stripe/checkout", "month")}
+            disabled={busy}
+            className="rounded-full bg-flame px-5 py-2.5 text-sm font-medium text-paper transition hover:opacity-90 disabled:opacity-40"
+          >
+            {busy ? "opening…" : "$30 / month"}
+          </button>
+          <button
+            type="button"
+            onClick={() => go("/api/stripe/checkout", "year")}
+            disabled={busy}
+            className="rounded-full border border-flame px-5 py-2.5 text-sm font-medium text-flame transition hover:bg-flame/5 disabled:opacity-40"
+          >
+            {busy ? "opening…" : "$300 / year · 2 months free"}
+          </button>
+        </div>
       )}
 
       {error && <p className="mt-2 text-sm text-flame">{error}</p>}

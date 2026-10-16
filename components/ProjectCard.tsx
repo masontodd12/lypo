@@ -122,7 +122,11 @@ export function ProjectCard({
               <p className="font-display truncate font-semibold">{name}</p>
             )}
             <p className="mt-1 text-xs tracking-widest text-faint uppercase">
-              {status}
+              {status === "suspended" ? (
+                <span className="text-flame">offline · plan inactive</span>
+              ) : (
+                status
+              )}
               {status === "published" && views > 0 && (
                 <span className="normal-case tracking-normal">
                   {" "}· {views.toLocaleString()} view{views === 1 ? "" : "s"}

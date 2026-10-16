@@ -25,8 +25,22 @@ export const SUBSCRIPTIONS_ENABLED =
 
 const KEY = process.env.STRIPE_SECRET_KEY ?? "";
 
+/**
+ * The two plans: $30 a month or $300 a year. Each is a recurring Price in the
+ * Stripe dashboard, and its id lives in the environment so the amounts can be
+ * changed there without a deploy. STRIPE_PRICE_ID is the older single-price
+ * name and still counts as the monthly one.
+ */
+export const PRICES = {
+  month:
+    process.env.STRIPE_PRICE_ID_MONTHLY ?? process.env.STRIPE_PRICE_ID ?? "",
+  year: process.env.STRIPE_PRICE_ID_YEARLY ?? "",
+};
+
+export type Interval = keyof typeof PRICES;
+
 /** Whether Stripe is configured well enough to take a payment at all. */
-export const STRIPE_READY = !!KEY && !!process.env.STRIPE_PRICE_ID;
+export const STRIPE_READY = !!KEY && !!(PRICES.month || PRICES.year);
 
 export function stripeClient(): Stripe {
   if (!KEY) throw new Error("STRIPE_SECRET_KEY is not set");
@@ -35,6 +49,10 @@ export function stripeClient(): Stripe {
 
 /** Statuses Stripe considers a live, paid-up subscription. */
 const LIVE = new Set(["active", "trialing"]);
+
+export function isLive(status: string | null | undefined): boolean {
+  return !!status && LIVE.has(status);
+}
 
 export type Subscription = {
   status: string;
@@ -74,5 +92,45 @@ export async function canPublish(
   if (!SUBSCRIPTIONS_ENABLED) return true;
   if (isAdmin(user)) return true;
   const sub = await getSubscription(db, user.id);
-  return !!sub && LIVE.has(sub.status);
+  return isLive(sub?.status);
+}
+
+/**
+ * Takes an owner's sites down when their plan stops, and puts them back when
+ * it starts again.
+ *
+ * "suspended" is its own status rather than "draft" so that coming back only
+ * restores what billing took away, never a site the owner or an admin chose
+ * to take offline. Every public surface already filters on "published", so
+ * this one write is what takes the site, its forms, its store and its
+ * sitemap down together. Nothing is deleted.
+ *
+ * Needs the service-role client: it is called from the webhook and the cron,
+ * where nobody is signed in.
+ */
+export async function syncOwnerSites(
+  db: SupabaseClient,
+  userId: string,
+  live: boolean,
+): Promise<void> {
+  let keepUp = live || !SUBSCRIPTIONS_ENABLED;
+  if (!keepUp) {
+    // Admins never lose their sites, the same as they can always publish.
+    const { data } = await db.auth.admin.getUserById(userId);
+    keepUp = isAdmin(data?.user);
+  }
+
+  const { error } = keepUp
+    ? await db
+        .from("projects")
+        .update({ status: "published" })
+        .eq("user_id", userId)
+        .eq("status", "suspended")
+    : await db
+        .from("projects")
+        .update({ status: "suspended" })
+        .eq("user_id", userId)
+        .eq("status", "published");
+  if (error)
+    console.error(`could not sync sites for ${userId}:`, error.message);
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { stripeClient } from "@/lib/billing";
+import { isLive, stripeClient, syncOwnerSites } from "@/lib/billing";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +52,24 @@ export async function POST(request: Request) {
       return;
     }
 
+    // A late event about an old subscription (say, the one cancelled before
+    // they resubscribed) must not overwrite the live one and take the sites
+    // down with it.
+    if (!isLive(sub.status)) {
+      const { data: current } = await db
+        .from("subscriptions")
+        .select("stripe_subscription_id, status")
+        .eq("user_id", id)
+        .maybeSingle();
+      if (
+        current?.stripe_subscription_id &&
+        current.stripe_subscription_id !== sub.id &&
+        isLive(current.status)
+      ) {
+        return;
+      }
+    }
+
     // Stripe moved the period on to the item in recent API versions, so read
     // whichever is present rather than assuming a shape.
     const periodEnd =
@@ -73,7 +91,15 @@ export async function POST(request: Request) {
       },
       { onConflict: "user_id" },
     );
-    if (error) console.error("could not save subscription:", error.message);
+    if (error) {
+      // Thrown so Stripe retries: the row and the sites must not disagree.
+      throw new Error(`could not save subscription: ${error.message}`);
+    }
+
+    // Not live any more (cancelled, unpaid, payment failed) takes the sites
+    // down; live again puts them back. The daily cron repeats this in case a
+    // webhook is ever missed.
+    await syncOwnerSites(db, id, isLive(sub.status));
   }
 
   try {

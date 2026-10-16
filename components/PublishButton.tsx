@@ -42,11 +42,15 @@ export function PublishButton({
     : null;
 
   /** Sends them to Stripe Checkout, then back here to publish. */
-  async function subscribe() {
+  async function subscribe(interval: "month" | "year") {
     setBusy(true);
     setError("");
     try {
-      const res = await fetch("/api/stripe/checkout", { method: "POST" });
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ interval }),
+      });
       const data = await res.json();
       if (data.url) window.location.href = data.url;
       else setError(data.error ?? "Couldn't start checkout.");
@@ -148,6 +152,41 @@ export function PublishButton({
             : "publish"}
       </button>
 
+      {needsPlan && (
+        <div className="absolute top-12 right-0 z-20 w-80 rounded-xl border border-flame/40 bg-paper p-4 shadow-lg">
+          <p className="text-xs leading-relaxed">
+            Publishing needs a Lypo plan. Everything you have built is saved,
+            and building and previewing stay free.
+          </p>
+          <div className="mt-2 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => subscribe("month")}
+              disabled={busy}
+              className="rounded-full bg-flame px-3 py-1.5 text-xs font-medium text-paper transition hover:opacity-90 disabled:opacity-40"
+            >
+              {busy ? "opening…" : "$30/mo"}
+            </button>
+            <button
+              type="button"
+              onClick={() => subscribe("year")}
+              disabled={busy}
+              className="rounded-full border border-flame px-3 py-1.5 text-xs font-medium text-flame transition hover:bg-flame/5 disabled:opacity-40"
+            >
+              $300/yr
+            </button>
+            <button
+              type="button"
+              onClick={() => setNeedsPlan(false)}
+              className="text-xs text-faint transition hover:text-flame"
+            >
+              not now
+            </button>
+          </div>
+          {error && <p className="mt-2 text-xs text-flame">{error}</p>}
+        </div>
+      )}
+
       {picking && (
         <div className="absolute top-12 right-0 z-20 w-80 rounded-xl border border-line bg-paper p-5 shadow-lg">
           <p className="font-display font-semibold">
@@ -176,7 +215,8 @@ export function PublishButton({
             )}
           </div>
           <p className="mt-4 text-xs text-ink-soft">
-            what is this for? <span className="text-faint">(one line, optional)</span>
+            what is this for?{" "}
+            <span className="text-faint">(one line, optional)</span>
           </p>
           <input
             value={story}
@@ -185,31 +225,6 @@ export function PublishButton({
             aria-label="What is this site for"
             className="mt-1 w-full border-b-2 border-ink bg-transparent py-2 text-sm outline-none placeholder:text-faint focus:border-flame"
           />
-          {needsPlan && (
-            <div className="mt-2 rounded-lg border border-flame/40 bg-flame/5 p-3">
-              <p className="text-xs leading-relaxed">
-                Publishing needs a Lypo plan. Everything you have built is
-                saved, and building and previewing stay free.
-              </p>
-              <div className="mt-2 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={subscribe}
-                  disabled={busy}
-                  className="rounded-full bg-flame px-3 py-1.5 text-xs font-medium text-paper transition hover:opacity-90 disabled:opacity-40"
-                >
-                  {busy ? "opening…" : "see plans"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNeedsPlan(false)}
-                  className="text-xs text-faint transition hover:text-flame"
-                >
-                  not now
-                </button>
-              </div>
-            </div>
-          )}
           {error && <p className="mt-2 text-xs text-flame">{error}</p>}
           <div className="mt-4 flex items-center justify-end gap-3">
             <button
