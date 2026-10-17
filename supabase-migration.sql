@@ -339,6 +339,11 @@ drop policy if exists "read own subscription" on subscriptions;
 create policy "read own subscription" on subscriptions
   for select using (auth.uid() = user_id);
 
+-- Tables made in the SQL editor are not granted to the API roles, and without
+-- this the policy above never gets a chance: every read comes back empty, so
+-- a paying customer looks unsubscribed and cannot publish.
+grant select on subscriptions to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Sites come down when their owner's plan stops.
 --
