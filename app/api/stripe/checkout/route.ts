@@ -1,13 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  PRICES,
-  STRIPE_READY,
-  getSubscription,
-  stripeClient,
-  type Interval,
-} from "@/lib/billing";
-import { appOrigin } from "@/lib/site-url";
+import { createCheckout, type Interval } from "@/lib/billing";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +12,6 @@ export const dynamic = "force-dynamic";
  * different product and it was removed.
  */
 export async function POST(request: Request) {
-  if (!STRIPE_READY) {
-    return NextResponse.json(
-      { error: "Subscriptions are not switched on yet." },
-      { status: 503 },
-    );
-  }
-
   const supabase = await createClient();
   const {
     data: { user },
@@ -37,46 +23,9 @@ export async function POST(request: Request) {
   // { interval: "month" | "year" }; monthly when nothing is said.
   const body = await request.json().catch(() => ({}));
   const interval: Interval = body?.interval === "year" ? "year" : "month";
-  const price = PRICES[interval];
-  if (!price) {
-    return NextResponse.json(
-      { error: `The ${interval}ly plan is not set up yet.` },
-      { status: 503 },
-    );
-  }
 
-  const origin = appOrigin();
-  const stripe = stripeClient();
-
-  // Reuse the customer if this person has subscribed before, so a lapsed
-  // account resubscribes onto its own billing history rather than becoming a
-  // second stranger with the same email.
-  const existing = await getSubscription(supabase, user.id);
-
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      line_items: [{ price, quantity: 1 }],
-      ...(existing?.stripe_customer_id
-        ? { customer: existing.stripe_customer_id }
-        : { customer_email: user.email }),
-      // The webhook is what actually grants access, so the id it needs has
-      // to survive the round trip through Stripe. On the subscription too,
-      // because later renewals arrive without the checkout session.
-      client_reference_id: user.id,
-      subscription_data: { metadata: { user_id: user.id } },
-      metadata: { user_id: user.id },
-      allow_promotion_codes: true,
-      success_url: `${origin}/dashboard?subscribed=1`,
-      cancel_url: `${origin}/dashboard`,
-    });
-
-    return NextResponse.json({ url: session.url });
-  } catch (e) {
-    console.error("checkout session failed:", e);
-    return NextResponse.json(
-      { error: "Couldn't start checkout. Try again." },
-      { status: 502 },
-    );
-  }
+  const result = await createCheckout(supabase, user, interval);
+  return result.ok
+    ? NextResponse.json({ url: result.url })
+    : NextResponse.json({ error: result.error }, { status: result.status });
 }

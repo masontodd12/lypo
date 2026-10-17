@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isAdmin } from "@/lib/admin";
+import { appOrigin } from "@/lib/site-url";
 import type { User } from "@supabase/supabase-js";
 
 /**
@@ -133,4 +134,61 @@ export async function syncOwnerSites(
         .eq("status", "published");
   if (error)
     console.error(`could not sync sites for ${userId}:`, error.message);
+}
+
+export type CheckoutResult =
+  | { ok: true; url: string }
+  | { ok: false; status: number; error: string };
+
+/**
+ * A Stripe Checkout page for this user and plan.
+ *
+ * Shared by the settings and publish buttons (which POST) and /subscribe
+ * (which a visitor reaches straight from the homepage pricing), so both
+ * attach the user the same way the webhook expects.
+ */
+export async function createCheckout(
+  db: SupabaseClient,
+  user: Pick<User, "id" | "email">,
+  interval: Interval,
+  opts: { cancelPath?: string } = {},
+): Promise<CheckoutResult> {
+  if (!STRIPE_READY) {
+    return { ok: false, status: 503, error: "Subscriptions are not switched on yet." };
+  }
+  const price = PRICES[interval];
+  if (!price) {
+    return { ok: false, status: 503, error: `The ${interval}ly plan is not set up yet.` };
+  }
+
+  const origin = appOrigin();
+
+  // Reuse the customer if this person has subscribed before, so a lapsed
+  // account resubscribes onto its own billing history rather than becoming a
+  // second stranger with the same email.
+  const existing = await getSubscription(db, user.id);
+
+  try {
+    const session = await stripeClient().checkout.sessions.create({
+      mode: "subscription",
+      line_items: [{ price, quantity: 1 }],
+      ...(existing?.stripe_customer_id
+        ? { customer: existing.stripe_customer_id }
+        : { customer_email: user.email }),
+      // The webhook is what actually grants access, so the id it needs has
+      // to survive the round trip through Stripe. On the subscription too,
+      // because later renewals arrive without the checkout session.
+      client_reference_id: user.id,
+      subscription_data: { metadata: { user_id: user.id } },
+      metadata: { user_id: user.id },
+      allow_promotion_codes: true,
+      success_url: `${origin}/dashboard?subscribed=1`,
+      cancel_url: `${origin}${opts.cancelPath ?? "/dashboard"}`,
+    });
+    if (!session.url) throw new Error("Stripe returned no checkout url");
+    return { ok: true, url: session.url };
+  } catch (e) {
+    console.error("checkout session failed:", e);
+    return { ok: false, status: 502, error: "Couldn't start checkout. Try again." };
+  }
 }

@@ -11,7 +11,7 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       // Nothing behind a login is useful in an index, and crawling the
       // builder would burn generation quota on pages no one can reach.
-      disallow: ["/api/", "/builder/", "/dashboard/", "/settings", "/auth/"],
+      disallow: ["/api/", "/builder/", "/dashboard/", "/settings", "/auth/", "/subscribe"],
     },
     sitemap: `${appOrigin()}/sitemap.xml`,
   };

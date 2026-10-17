@@ -3,12 +3,18 @@ import { PromptCta } from "@/components/PromptCta";
 import { EXAMPLES } from "@/lib/examples";
 import { FounderJsonLd } from "@/lib/founder";
 import { createClient } from "@/lib/supabase/server";
+import { SUBSCRIPTIONS_ENABLED, getSubscription, isLive } from "@/lib/billing";
 
 export default async function Home() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  const subscribed =
+    SUBSCRIPTIONS_ENABLED && user
+      ? isLive((await getSubscription(supabase, user.id))?.status)
+      : false;
 
   return (
     <main className="min-h-screen">
@@ -31,6 +37,11 @@ export default async function Home() {
           <Link href="#examples" className="block transition hover:text-flame">
             examples
           </Link>
+          {SUBSCRIPTIONS_ENABLED && (
+            <Link href="#pricing" className="block transition hover:text-flame">
+              pricing
+            </Link>
+          )}
           {user ? (
             <Link
               href="/dashboard"
@@ -140,6 +151,74 @@ export default async function Home() {
           </div>
         </div>
       </section>
+
+      {/* ---------- Pricing ---------- */}
+      {/* Up front, so nobody meets the price for the first time at the
+          publish button after an hour of building. */}
+      {SUBSCRIPTIONS_ENABLED && (
+        <section id="pricing" className="border-t border-line">
+          <div className="mx-auto max-w-6xl px-6 py-24">
+            <h2 className="font-display text-4xl leading-tight font-semibold tracking-tight">
+              pricing<span className="text-flame">.</span>
+            </h2>
+            <p className="mt-3 max-w-md leading-relaxed text-ink-soft">
+              Building and previewing are free, as long as you like. A plan
+              is what puts your site live and keeps it there. Cancel any time
+              and your site stays up until the end of what you paid for.
+            </p>
+
+            {subscribed ? (
+              <p className="mt-10 text-sm">
+                <span className="font-medium">You have a plan.</span>{" "}
+                <Link href="/settings" className="text-flame hover:underline">
+                  manage it in settings →
+                </Link>
+              </p>
+            ) : (
+              <div className="mt-10 grid max-w-2xl gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-line p-6">
+                  <p className="lypo-label text-faint">monthly</p>
+                  <p className="font-display mt-2 text-4xl font-semibold tracking-tight">
+                    $30
+                    <span className="text-base font-normal text-ink-soft">
+                      {" "}
+                      / month
+                    </span>
+                  </p>
+                  <a
+                    href="/subscribe?plan=month"
+                    className="mt-6 inline-block rounded-full bg-flame px-5 py-2.5 text-sm font-medium text-paper transition hover:bg-flame-bright"
+                  >
+                    get monthly
+                  </a>
+                </div>
+                <div className="rounded-xl border border-flame p-6">
+                  <p className="lypo-label text-flame">yearly · 2 months free</p>
+                  <p className="font-display mt-2 text-4xl font-semibold tracking-tight">
+                    $300
+                    <span className="text-base font-normal text-ink-soft">
+                      {" "}
+                      / year
+                    </span>
+                  </p>
+                  <a
+                    href="/subscribe?plan=year"
+                    className="mt-6 inline-block rounded-full bg-flame px-5 py-2.5 text-sm font-medium text-paper transition hover:bg-flame-bright"
+                  >
+                    get yearly
+                  </a>
+                </div>
+              </div>
+            )}
+
+            <ul className="mt-8 max-w-md space-y-1 text-sm text-ink-soft">
+              <li>Every site you build, published and live</li>
+              <li>Your own lypo.dev address, or connect a domain you own</li>
+              <li>Forms, bookings and visit counts for each site</li>
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* ---------- Mission ---------- */}
       <section id="mission" className="border-t border-line">
