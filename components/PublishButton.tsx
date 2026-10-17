@@ -2,12 +2,24 @@
 
 import { useState } from "react";
 
+/** "Fade Factory" -> "fade-factory". Empty when there is nothing usable. */
+function slugFromName(name: string): string {
+  if (!name || name === "untitled") return "";
+  return name
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
 export function PublishButton({
   projectId,
   initialSlug,
   initialStatus,
   appHost,
   pathRouting,
+  name,
 }: {
   projectId: string;
   initialSlug: string | null;
@@ -16,6 +28,8 @@ export function PublishButton({
   appHost: string;
   /** True in local dev and previews, where wildcard DNS doesn't exist. */
   pathRouting: boolean;
+  /** The site's name, offered as the first link so the box is not empty. */
+  name?: string;
 }) {
   const [slug, setSlug] = useState(initialSlug);
   const [status, setStatus] = useState(initialStatus);
@@ -94,6 +108,9 @@ export function PublishButton({
 
   function onPublishClick() {
     if (!slug) {
+      // Filled here rather than at mount: the name is usually set after
+      // this button has already rendered.
+      setDesired((d) => d || slugFromName(name ?? ""));
       setPicking(true); // first publish: pick your link
     } else {
       publish(); // republish under existing link

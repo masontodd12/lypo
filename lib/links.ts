@@ -191,6 +191,14 @@ export type DomainCheck =
  * is an address we will be asked to serve and issue a certificate for, so a
  * path or a port is a sign they pasted the wrong thing.
  */
+/** Country endings where the registrable name sits one level deeper. */
+const TWO_PART_ENDINGS = new Set([
+  "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk",
+  "com.au", "net.au", "org.au",
+  "co.nz", "org.nz",
+  "co.za", "com.br", "com.mx", "co.in", "co.jp", "com.sg",
+]);
+
 export function checkCustomDomain(raw: string): DomainCheck {
   let value = (raw ?? "").trim().toLowerCase();
   if (!value) return { ok: false, reason: "Nothing entered." };
@@ -233,9 +241,18 @@ export function checkCustomDomain(raw: string): DomainCheck {
     };
   }
 
-  // Two labels means an apex like example.com, which needs an A record.
-  // More means a subdomain like shop.example.com, which needs a CNAME.
-  const isApex = value.split(".").length === 2;
+  // www is connected as the bare domain, with www added alongside it and
+  // redirecting there. Connecting only "www.example.com" left example.com,
+  // which is what most people type, going nowhere.
+  if (value.startsWith("www.") && value.split(".").length >= 3) {
+    value = value.slice(4);
+  }
+
+  // An apex like example.com (or example.co.uk) needs an A record. Anything
+  // deeper, like shop.example.com, needs a CNAME.
+  const labels = value.split(".");
+  const twoPartEnding = TWO_PART_ENDINGS.has(labels.slice(-2).join("."));
+  const isApex = labels.length === (twoPartEnding ? 3 : 2);
   return { ok: true, domain: value, isApex };
 }
 

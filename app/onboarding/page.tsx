@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { projectAllowance, uniqueName } from "@/lib/limits";
 import { isAdmin } from "@/lib/admin";
+import { nameFromIdea } from "@/lib/idea";
 
 export default async function Onboarding({
   searchParams,
@@ -30,8 +31,11 @@ export default async function Onboarding({
 
   // The name is derived from what they typed, not chosen, so a clash gets a
   // number rather than an error about a name they never picked.
+  // A business name in what they typed wins; otherwise the start of it,
+  // which at least tells projects apart on the dashboard.
   const wanted = idea
-    ? idea.slice(0, 40).replace(/\s+\S*$/, "") || "untitled"
+    ? nameFromIdea(idea) ??
+      (idea.slice(0, 40).replace(/\s+\S*$/, "") || "untitled")
     : "untitled";
   const name = await uniqueName(supabase, user.id, wanted);
 

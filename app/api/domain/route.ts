@@ -8,6 +8,7 @@ import {
   domainStatus,
   removeDomain,
   verifyDomain,
+  wwwFor,
 } from "@/lib/vercel-domains";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,11 @@ async function ownedProject(projectId: string) {
   return { supabase, project, allowed, desiredDomain };
 }
 
+function isApexDomain(domain: string): boolean {
+  const check = checkCustomDomain(domain);
+  return check.ok && check.isApex;
+}
+
 function unavailable() {
   return NextResponse.json(
     { error: "Custom domains are not switched on yet." },
@@ -84,7 +90,7 @@ export async function GET(request: Request) {
     allowed: owned.allowed,
     ...(status ?? { verified: false, misconfigured: true, verification: [] }),
     records: DNS_RECORDS,
-    isApex: domain.split(".").length === 2,
+    isApex: isApexDomain(domain),
   });
 }
 
@@ -119,7 +125,7 @@ export async function POST(request: Request) {
       misconfigured: status?.misconfigured ?? true,
       verification: status?.verification ?? [],
       records: DNS_RECORDS,
-      isApex: String(project.custom_domain).split(".").length === 2,
+      isApex: isApexDomain(String(project.custom_domain)),
     });
   }
 
@@ -169,6 +175,16 @@ export async function POST(request: Request) {
     );
   }
 
+  // www alongside the apex, redirecting to it. Best-effort: the apex is
+  // what they asked for and it is connected; a www that fails (someone else
+  // holds it on Vercel) should not undo that.
+  if (check.isApex) {
+    const www = await addDomain(wwwFor(check.domain), {
+      redirectTo: check.domain,
+    });
+    if (!www.ok) console.error(`www for ${check.domain}: ${www.error}`);
+  }
+
   // They have it now, so stop offering to help them buy it.
   await supabase
     .from("projects")
@@ -197,7 +213,12 @@ export async function DELETE(request: Request) {
   const { supabase, project } = owned;
   const domain = project.custom_domain as string | null;
 
-  if (domain) await removeDomain(domain);
+  if (domain) {
+    await removeDomain(domain);
+    // Harmless when there is no www, and leaving one behind would keep
+    // redirecting to an address that no longer serves anything.
+    await removeDomain(wwwFor(domain));
+  }
   await supabase
     .from("projects")
     .update({ custom_domain: null })

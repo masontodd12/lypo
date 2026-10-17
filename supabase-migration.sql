@@ -352,3 +352,17 @@ grant select on subscriptions to authenticated;
 -- added, which would otherwise reject the new value silently.
 -- ---------------------------------------------------------------------------
 alter table projects drop constraint if exists projects_status_check;
+
+-- ---------------------------------------------------------------------------
+-- API-role grants the earlier tables were missing.
+--
+-- These tables have row-level policies for their owners but were never
+-- granted to the authenticated role, so Postgres refused before any policy
+-- ran and every read came back empty: owners saw 0 visits and 0 taps, the
+-- version history and undo saw nothing, and extra-project grants were never
+-- applied. Each grant matches the commands its policies already allow.
+-- ---------------------------------------------------------------------------
+grant select on site_views to authenticated;
+grant select on site_events to authenticated;
+grant select on project_grants to authenticated;
+grant select, insert, delete on project_versions to authenticated;

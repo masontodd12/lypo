@@ -16,6 +16,19 @@ type State = {
   records: { apexARecord: string; cnameTarget: string; configured: boolean };
 };
 
+/**
+ * What goes in the registrar's "Host" box for a subdomain: everything left of
+ * the registrable name, so shop.example.com is "shop" and
+ * order.shop.example.co.uk is "order.shop".
+ */
+function subdomainLabel(domain: string): string {
+  const labels = domain.split(".");
+  const twoPart = /^(co|com|org|net|me|ltd|plc)\.[a-z]{2}$/.test(
+    labels.slice(-2).join("."),
+  );
+  return labels.slice(0, labels.length - (twoPart ? 3 : 2)).join(".");
+}
+
 function Record({
   type,
   name,
@@ -502,9 +515,26 @@ export function CustomDomain({
           {!live && (
             <>
               <p className="mt-2 text-xs leading-relaxed text-ink-soft">
-                Add {state.isApex ? "this record" : "this record"} wherever you
-                bought the domain, then leave it. It usually works within an
-                hour, but can take up to a day. We keep checking.
+                Add {state.isApex ? "these records" : "this record"} wherever
+                you bought the domain, then leave it. It usually works within
+                an hour, but can take up to a day. We keep checking.
+              </p>
+              {/* Namecheap and GoDaddy park new domains with their own
+                  records on @ and www. Left in place, they win, and the site
+                  never appears with nothing to say why. */}
+              <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+                First delete any records already there for{" "}
+                {state.isApex ? (
+                  <>
+                    <span className="font-mono">@</span> and{" "}
+                    <span className="font-mono">www</span>
+                  </>
+                ) : (
+                  <span className="font-mono">{subdomainLabel(state.domain!)}</span>
+                )}
+                , like a parking page or URL redirect. On Namecheap this is
+                Domain List, then Manage, then Advanced DNS. On GoDaddy it is
+                My Products, then DNS.
               </p>
 
               {!state.records.configured && (
@@ -516,11 +546,22 @@ export function CustomDomain({
 
               <div className="mt-3 rounded-lg border border-line px-3">
                 {state.isApex ? (
-                  <Record type="A" name="@" value={state.records.apexARecord} />
+                  <>
+                    <Record
+                      type="A"
+                      name="@"
+                      value={state.records.apexARecord}
+                    />
+                    <Record
+                      type="CNAME"
+                      name="www"
+                      value={state.records.cnameTarget}
+                    />
+                  </>
                 ) : (
                   <Record
                     type="CNAME"
-                    name={state.domain!.split(".")[0]}
+                    name={subdomainLabel(state.domain!)}
                     value={state.records.cnameTarget}
                   />
                 )}

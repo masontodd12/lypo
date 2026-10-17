@@ -7,6 +7,9 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { checkExternalLink } from "@/lib/links";
 import { CustomDomain } from "@/components/CustomDomain";
 import TemplatePreview from "@/components/TemplatePreview";
+import { withBaseStyle } from "@/lib/site-base";
+import { useRouter } from "next/navigation";
+import { nameFromIdea, typeFromIdea } from "@/lib/idea";
 import {
   ACCENTS,
   parseHex,
@@ -26,6 +29,12 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   page?: string;
+  /**
+   * What the chat shows instead of content. The first build sends the model
+   * a long set of instructions; the owner should see what they asked for,
+   * not our prompt.
+   */
+  display?: string;
 };
 
 /**
@@ -453,6 +462,17 @@ const SITE_TYPES = [
   { id: "shop", label: "shop preview", blurb: "show your products beautifully", hint: "a product showcase site" },
 ];
 
+/**
+ * Whether a project name is just the start of the homepage idea, which is
+ * what onboarding falls back to when no business name was given. Shown in
+ * the name box it reads as a typo of their own sentence.
+ */
+function looksLikeIdea(name: string, idea: string | null): boolean {
+  if (!idea) return false;
+  const base = name.replace(/\s+\d+$/, "").trim();
+  return base.length > 0 && idea.startsWith(base) && base !== nameFromIdea(idea);
+}
+
 export function BuilderChat({
   initialPages,
   initialMultiPage,
@@ -536,6 +556,9 @@ export function BuilderChat({
   const [siteType, setSiteType] = useState<string | null>(
     draft?.siteType ?? null,
   );
+  const router = useRouter();
+  // From what they typed on the homepage. Only a highlight: they still pick.
+  const suggestedType = typeFromIdea(initialIdea);
   // Gaps in the brief, asked about before building rather than guessed at.
   const [gaps, setGaps] = useState<
     { id: string; question: string; why: string }[]
@@ -543,7 +566,10 @@ export function BuilderChat({
   const [gapAnswers, setGapAnswers] = useState<Record<string, string>>({});
   const [checkingGaps, setCheckingGaps] = useState(false);
   const [projectName, setProjectName] = useState(
-    draft?.projectName ?? (initialName === "untitled" ? "" : initialName),
+    draft?.projectName ??
+      (initialName === "untitled" || looksLikeIdea(initialName, initialIdea)
+        ? (nameFromIdea(initialIdea) ?? "")
+        : initialName),
   );
   const [kind, setKind] = useState<string>(
     draft?.kind ?? initialKind ?? "website",
@@ -1041,11 +1067,14 @@ document.addEventListener("click", function (e) {
   );
 
   const injectedScripts = NAV_SCRIPT + (editMode ? EDIT_SCRIPT : "");
-  const previewHtml = html
-    ? html.includes("</body>")
-      ? html.replace("</body>", injectedScripts + "</body>")
-      : html + injectedScripts
-    : html;
+  // Same base style the published site gets, so the preview does not show
+  // a layout that changes once it goes live.
+  const based = html ? withBaseStyle(html) : html;
+  const previewHtml = based
+    ? based.includes("</body>")
+      ? based.replace("</body>", injectedScripts + "</body>")
+      : based + injectedScripts
+    : based;
 
   const wordCount = description.trim()
     ? description.trim().split(/\s+/).length
@@ -1214,6 +1243,8 @@ document.addEventListener("click", function (e) {
      * whatever the project already stored.
      */
     designOverride?: DesignChoice,
+    /** Shown in the chat in place of message. */
+    shownAs?: string,
   ): Promise<string | null> {
     const targetPage = pageOverride ?? currentPage;
     inFlight.current += 1;
@@ -1231,7 +1262,7 @@ document.addEventListener("click", function (e) {
     }
     setMessages((prev) => [
       ...prev,
-      { role: "user", content: message, page: targetPage },
+      { role: "user", content: message, page: targetPage, display: shownAs },
     ]);
 
     try {
@@ -1246,6 +1277,7 @@ document.addEventListener("click", function (e) {
           purpose: siteType ?? undefined,
           logoUrl: logo ?? undefined,
           design: designOverride ?? currentDesign(),
+          display: shownAs,
         }),
       });
       // Newline-delimited JSON: many {t:"delta"} as the page is written,
@@ -1435,6 +1467,7 @@ document.addEventListener("click", function (e) {
         "home",
         true,
         design,
+        `Build my ${pagesToBuild.length > 0 ? "home page" : "site"} from my answers.`,
       );
 
       // Home failed. generate() already surfaced the error, and there is
@@ -1562,6 +1595,8 @@ document.addEventListener("click", function (e) {
       .from("projects")
       .update({ name, kind })
       .eq("id", projectId);
+    // The header above is server-rendered from the old name.
+    router.refresh();
     setStep("type");
     saveDraft({ step: "type", projectName: name, kind });
   }
@@ -1668,8 +1703,13 @@ document.addEventListener("click", function (e) {
                 setStep("template");
                 saveDraft({ step: "template", siteType: type.id });
               }}
-              className="rounded-xl border border-line bg-paper p-5 text-left transition hover:border-flame"
+              className={`rounded-xl border bg-paper p-5 text-left transition hover:border-flame ${
+                type.id === suggestedType ? "border-flame" : "border-line"
+              }`}
             >
+              {type.id === suggestedType && (
+                <p className="lypo-label mb-1 text-flame">suggested</p>
+              )}
               <p className="font-display font-semibold">
                 {type.label}
                 <span className="text-flame">.</span>
@@ -2795,7 +2835,17 @@ document.addEventListener("click", function (e) {
 
         <p className="mt-6 text-sm font-medium">
           photos{" "}
-          <span className="text-faint">(food, the space, your team)</span>
+          <span className="text-faint">
+            (
+            {siteType === "restaurant" || siteType === "foodtruck"
+              ? "food, the space, your team"
+              : siteType === "barbershop"
+                ? "your cuts, the chairs, your team"
+                : siteType === "portfolio"
+                  ? "your best work"
+                  : "your work, the place, the people"}
+            )
+          </span>
         </p>
         <label className="mt-2 inline-block w-fit cursor-pointer rounded-full border border-line px-4 py-2 text-sm text-ink-soft transition hover:border-flame hover:text-flame">
           {uploading ? "uploading…" : "+ add photos"}
@@ -3096,7 +3146,10 @@ document.addEventListener("click", function (e) {
           {pageMessages.map((m, i) =>
             m.role === "user" ? (
               <div key={i} className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm bg-mist px-4 py-2.5">
-                {m.content.length > 220 ? m.content.slice(0, 220) + "…" : m.content}
+                {(() => {
+                  const text = m.display ?? m.content;
+                  return text.length > 220 ? text.slice(0, 220) + "…" : text;
+                })()}
               </div>
             ) : (
               <div key={i} className="max-w-[85%] rounded-2xl rounded-bl-sm border border-line px-4 py-2.5 text-ink-soft">

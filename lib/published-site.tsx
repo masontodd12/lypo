@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { appHost, appOrigin } from "@/lib/site-url";
 import { SiteNavBridge } from "@/components/SiteNavBridge";
+import { withBaseStyle } from "@/lib/site-base";
 
 /**
  * One renderer for every published page.
@@ -121,10 +122,22 @@ export async function renderSite(project: PublishedProject, pageHtml: string) {
     ? "allow-scripts allow-forms allow-popups"
     : "allow-scripts allow-forms allow-same-origin allow-popups";
 
+  // The pages this site really has. A model sometimes writes a page link on
+  // a one-page site ("Request a time" to a "booking" page that was never
+  // built), and following it lands the visitor on a 404 from the main
+  // button. The frame checks this list and scrolls to the section instead.
+  const realPages = [
+    "home",
+    ...Object.entries(project.pages ?? {})
+      .filter(([, v]) => typeof v === "string" && v.trim() !== "")
+      .map(([k]) => k.toLowerCase()),
+  ];
+
   const injected = `
 <script>
 (function () {
   var LYPO_PROJECT_ID = ${JSON.stringify(project.project_id)};
+  var LYPO_PAGES = ${JSON.stringify(realPages).replace(/</g, "\\u003c")};
   var LYPO_SUBMIT = ${JSON.stringify(site + "/api/submit")};
   var LYPO_EVENT = ${JSON.stringify(site + "/api/event")};
 
@@ -172,12 +185,36 @@ export async function renderSite(project: PublishedProject, pageHtml: string) {
   };
 
   // ---------- multi-page nav ----------
+  // The section a missing page most likely meant: an id that matches, then
+  // one that contains the word, then for booking-type words the first form.
+  function lypoSectionFor(page) {
+    var p = String(page).toLowerCase().replace(/[^a-z0-9-]/g, "");
+    if (!p) return null;
+    var exact = document.getElementById(p);
+    if (exact) return exact;
+    var all = document.querySelectorAll("[id]");
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].id.toLowerCase().indexOf(p) !== -1) return all[i];
+    }
+    if (/book|appoint|reserv|contact|order|rsvp|sign|request|quote/.test(p)) {
+      var form = document.querySelector("form");
+      if (form) return form.closest("section") || form;
+    }
+    return null;
+  }
+
   document.addEventListener("click", function (e) {
     var link = e.target.closest && e.target.closest("[data-lypo-page]");
     if (!link) return;
     e.preventDefault();
     var page = link.getAttribute("data-lypo-page");
     if (!page) return;
+    if (LYPO_PAGES.indexOf(page.toLowerCase()) === -1) {
+      // Not a page this site has: treat it as a section on this one.
+      var target = lypoSectionFor(page);
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     // This frame is sandboxed without allow-top-navigation, so setting
     // window.top.location here is blocked and the link does nothing. The
     // wrapper page listens for this and navigates instead.
@@ -297,9 +334,10 @@ export async function renderSite(project: PublishedProject, pageHtml: string) {
   </a>
 </div>`;
 
-  const html = pageHtml.includes("</body>")
-    ? pageHtml.replace("</body>", `${injected}</body>`)
-    : pageHtml + injected;
+  const based = withBaseStyle(pageHtml);
+  const html = based.includes("</body>")
+    ? based.replace("</body>", `${injected}</body>`)
+    : based + injected;
 
   return (
     <>

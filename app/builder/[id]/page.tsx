@@ -98,6 +98,7 @@ export default async function Builder({
             projectId={project.id}
             initialSlug={project.slug}
             initialStatus={project.status}
+            name={project.name}
             appHost={appHost()}
             pathRouting={
               appHost().startsWith("localhost") ||

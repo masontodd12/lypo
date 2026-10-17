@@ -80,10 +80,29 @@ function messageFrom(body: Record<string, unknown>, fallback: string): string {
   return err?.message ?? fallback;
 }
 
-export async function addDomain(domain: string): Promise<AddDomainResult> {
+/**
+ * The www name to add next to an apex. Vercel serves it as a permanent
+ * redirect to the apex, so both addresses work and search engines see one.
+ */
+export function wwwFor(apex: string): string {
+  return `www.${apex}`;
+}
+
+export async function addDomain(
+  domain: string,
+  opts: { redirectTo?: string } = {},
+): Promise<AddDomainResult> {
   const { ok, status, body } = await call(
     `/v10/projects/${encodeURIComponent(PROJECT)}/domains${qs()}`,
-    { method: "POST", body: JSON.stringify({ name: domain }) },
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: domain,
+        ...(opts.redirectTo
+          ? { redirect: opts.redirectTo, redirectStatusCode: 308 }
+          : {}),
+      }),
+    },
   );
 
   if (!ok) {

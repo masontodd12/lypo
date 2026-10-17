@@ -32,8 +32,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const { projectId, message, imageUrls, page, purpose, logoUrl, design } =
-    await request.json();
+  const {
+    projectId,
+    message,
+    imageUrls,
+    page,
+    purpose,
+    logoUrl,
+    design,
+    display,
+  } = await request.json();
   const pageName: string = typeof page === "string" && page ? page : "home";
   if (!projectId || !message) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
@@ -121,6 +129,8 @@ export async function POST(request: Request) {
     role: "user" | "assistant";
     content: string;
     page?: string;
+    /** Chat label for a turn whose content is our own instructions. */
+    display?: string;
   };
   const allTurns: Turn[] = Array.isArray(project.messages)
     ? (project.messages as Turn[])
@@ -243,7 +253,14 @@ export async function POST(request: Request) {
     const html = filled.html;
 
   const turns = [
-    { role: "user", content: message, page: pageName },
+    {
+      role: "user",
+      content: message,
+      page: pageName,
+      ...(typeof display === "string" && display
+        ? { display: display.slice(0, 200) }
+        : {}),
+    },
     { role: "assistant", content: summary, page: pageName },
   ];
 

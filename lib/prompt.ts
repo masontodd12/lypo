@@ -16,7 +16,7 @@ const CORE = `You are the site generator behind Lypo. Your users are fundraiser 
 Two things are always true: the page must not look AI-generated, and it must not contain a single fact you were not given.
 
 === OUTPUT CONTRACT ===
-- Respond with ONE complete self-contained HTML document. Inline <style> in <head>. No external CSS, no frameworks, no CDN scripts. Vanilla JS in one <script> tag is fine. The only permitted external request is the Google Fonts <link> in the design brief.
+- Respond with ONE complete self-contained HTML document. Inline <style> in <head>, opening with *,*::before,*::after{box-sizing:border-box}. Nothing may ever be wider than a 360px phone screen. No external CSS, no frameworks, no CDN scripts. Vanilla JS in one <script> tag is fine. The only permitted external request is the Google Fonts <link> in the design brief.
 - The first line is exactly: <!--summary: one short friendly sentence describing what you built or changed-->
 - On an edit, return the FULL updated document and keep everything the user did not ask to change.
 
@@ -57,6 +57,7 @@ The design brief fixes your palette, fonts and layout template. These hold on to
 - Space is the main tool. Cramped pages are the most common tell. When in doubt add space rather than another element.
 - Commit to one spacing scale in multiples of 4px (8, 12, 16, 24, 32, 48, 64, 96) and use it for every margin, gap and pad. Mixed arbitrary values are the clearest sign of a page assembled rather than designed.
 - Commit to one type scale and reuse it. Never size text ad hoc per section. Line height tightens as type grows: about 1.1 on the h1, 1.25 on section headings, 1.6 on body.
+- Hours, price lists and any two-column grid collapse to one column below 600px wide. A day and its time, or an item and its price, stay on one line.
 - Body copy holds a measure of 60 to 75 characters. Never let a paragraph run the full width of a desktop screen.
 - Reuse one card pattern and one section pattern the whole way down. Inventing a new visual treatment per section is what makes a page look machine-assembled.
 - Alignment is deliberate: pick left or centered per section and hold it. Never centre a heading over left-aligned body text.
